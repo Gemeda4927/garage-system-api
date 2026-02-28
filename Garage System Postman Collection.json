@@ -1,0 +1,1569 @@
+{
+  "info": {
+    "name": "🚗 Garage System API - Complete Collection",
+    "_postman_id": "b2c3d4e5-f6a7-8901-abcd-234567890abc",
+    "description": "Complete Garage System API with Role-Based Authentication (Admin, Car Owner, Garage Owner)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "🔐 1. AUTHENTICATION",
+      "item": [
+        {
+          "name": "📝 Register Car Owner",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Car Owner\",\n  \"email\": \"carowner@example.com\",\n  \"password\": \"123456\",\n  \"phone\": \"+251911111111\",\n  \"role\": \"car_owner\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "auth", "register"]
+            }
+          }
+        },
+        {
+          "name": "📝 Register Garage Owner",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Garage Owner\",\n  \"email\": \"garageowner@example.com\",\n  \"password\": \"123456\",\n  \"phone\": \"+251922222222\",\n  \"role\": \"garage_owner\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "auth", "register"]
+            }
+          }
+        },
+        {
+          "name": "📝 Register Admin",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Admin User\",\n  \"email\": \"admin@example.com\",\n  \"password\": \"123456\",\n  \"phone\": \"+251933333333\",\n  \"role\": \"admin\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "auth", "register"]
+            }
+          }
+        },
+        {
+          "name": "🔑 LOGIN - Car Owner",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const jsonData = pm.response.json();",
+                  "if (jsonData.success && jsonData.data?.token) {",
+                  "    pm.environment.set(\"token\", jsonData.data.token);",
+                  "    pm.environment.set(\"currentUserId\", jsonData.data.user?.id);",
+                  "    pm.environment.set(\"currentUserRole\", jsonData.data.user?.role);",
+                  "    pm.environment.set(\"currentUserEmail\", jsonData.data.user?.email);",
+                  "    ",
+                  "    console.log('✅ Car Owner Logged In');",
+                  "    console.log('Token:', jsonData.data.token);",
+                  "    console.log('User ID:', jsonData.data.user?.id);",
+                  "    ",
+                  "    if (jsonData.data.user?.role === 'car_owner') {",
+                  "        pm.environment.set(\"carOwnerToken\", jsonData.data.token);",
+                  "        pm.environment.set(\"carOwnerId\", jsonData.data.user?.id);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{carOwnerEmail}}\",\n  \"password\": \"{{carOwnerPassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "🔑 LOGIN - Garage Owner",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const jsonData = pm.response.json();",
+                  "if (jsonData.success && jsonData.data?.token) {",
+                  "    pm.environment.set(\"token\", jsonData.data.token);",
+                  "    pm.environment.set(\"currentUserId\", jsonData.data.user?.id);",
+                  "    pm.environment.set(\"currentUserRole\", jsonData.data.user?.role);",
+                  "    pm.environment.set(\"currentUserEmail\", jsonData.data.user?.email);",
+                  "    ",
+                  "    console.log('✅ Garage Owner Logged In');",
+                  "    console.log('Token:', jsonData.data.token);",
+                  "    console.log('User ID:', jsonData.data.user?.id);",
+                  "    ",
+                  "    if (jsonData.data.user?.role === 'garage_owner') {",
+                  "        pm.environment.set(\"garageOwnerToken\", jsonData.data.token);",
+                  "        pm.environment.set(\"garageOwnerId\", jsonData.data.user?.id);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{garageOwnerEmail}}\",\n  \"password\": \"{{garageOwnerPassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "🔑 LOGIN - Admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const jsonData = pm.response.json();",
+                  "if (jsonData.success && jsonData.data?.token) {",
+                  "    pm.environment.set(\"token\", jsonData.data.token);",
+                  "    pm.environment.set(\"currentUserId\", jsonData.data.user?.id);",
+                  "    pm.environment.set(\"currentUserRole\", jsonData.data.user?.role);",
+                  "    pm.environment.set(\"currentUserEmail\", jsonData.data.user?.email);",
+                  "    ",
+                  "    console.log('✅ Admin Logged In');",
+                  "    console.log('Token:', jsonData.data.token);",
+                  "    console.log('User ID:', jsonData.data.user?.id);",
+                  "    ",
+                  "    if (jsonData.data.user?.role === 'admin') {",
+                  "        pm.environment.set(\"adminToken\", jsonData.data.token);",
+                  "        pm.environment.set(\"adminId\", jsonData.data.user?.id);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "🔄 Refresh Token",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/refresh-token",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "auth", "refresh-token"]
+            }
+          }
+        },
+        {
+          "name": "👤 Get Current User Profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "auth", "me"]
+            }
+          }
+        },
+        {
+          "name": "🔒 Change Password",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"123456\",\n  \"newPassword\": \"newpassword123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/change-password",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "auth", "change-password"]
+            }
+          }
+        },
+        {
+          "name": "🔓 Forgot Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{currentUserEmail}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/forgot-password",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "auth", "forgot-password"]
+            }
+          }
+        },
+        {
+          "name": "🚪 Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/logout",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "auth", "logout"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.environment.unset(\"token\");",
+                  "console.log('🚪 Logged out - token cleared');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "👥 2. USERS (Admin Only)",
+      "item": [
+        {
+          "name": "📋 Get All Users",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users?page=1&limit=10",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "users"]
+            }
+          }
+        },
+        {
+          "name": "🔍 Get User By ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/{{currentUserId}}",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "users", "{{currentUserId}}"]
+            }
+          }
+        },
+        {
+          "name": "✏️ Update User",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Name\",\n  \"phone\": \"+251999999999\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/{{currentUserId}}",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "users", "{{currentUserId}}"]
+            }
+          }
+        },
+        {
+          "name": "🗑️ Soft Delete User",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/{{currentUserId}}",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "users", "{{currentUserId}}"]
+            }
+          }
+        },
+        {
+          "name": "🔄 Restore User",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/{{currentUserId}}/restore",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "users", "{{currentUserId}}", "restore"]
+            }
+          }
+        },
+        {
+          "name": "🔥 Hard Delete User",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/{{currentUserId}}/hard",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "users", "{{currentUserId}}", "hard"]
+            }
+          }
+        },
+        {
+          "name": "🗑️ Get Deleted Users",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/deleted/all",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "users", "deleted", "all"]
+            }
+          }
+        },
+        {
+          "name": "✅ Grant Garage Creation",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/{{garageOwnerId}}/grant-garage-creation",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "users", "{{garageOwnerId}}", "grant-garage-creation"]
+            }
+          }
+        },
+        {
+          "name": "❌ Revoke Garage Creation",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/{{garageOwnerId}}/revoke-garage-creation",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "users", "{{garageOwnerId}}", "revoke-garage-creation"]
+            }
+          }
+        },
+        {
+          "name": "📊 Get User Statistics",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/stats/summary",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "users", "stats", "summary"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🏪 3. GARAGES",
+      "item": [
+        {
+          "name": "🏗️ Create Garage (Garage Owner)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const jsonData = pm.response.json();",
+                  "if (jsonData.success && jsonData.data?.garage?._id) {",
+                  "    pm.environment.set(\"garageId\", jsonData.data.garage._id);",
+                  "    console.log('🏪 Garage created with ID:', jsonData.data.garage._id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{garageOwnerToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Premium Auto Garage\",\n  \"description\": \"Best car service in town\",\n  \"coordinates\": [38.7578, 9.0054],\n  \"address\": {\n    \"street\": \"Bole Road\",\n    \"city\": \"Addis Ababa\",\n    \"state\": \"Addis Ababa\",\n    \"country\": \"Ethiopia\",\n    \"zipCode\": \"1000\"\n  },\n  \"contactInfo\": {\n    \"phone\": \"+251911223344\",\n    \"email\": \"premium@garage.com\",\n    \"website\": \"www.premiumgarage.com\"\n  },\n  \"businessHours\": {\n    \"monday\": {\"open\": \"08:00\", \"close\": \"18:00\", \"closed\": false},\n    \"tuesday\": {\"open\": \"08:00\", \"close\": \"18:00\", \"closed\": false},\n    \"wednesday\": {\"open\": \"08:00\", \"close\": \"18:00\", \"closed\": false},\n    \"thursday\": {\"open\": \"08:00\", \"close\": \"18:00\", \"closed\": false},\n    \"friday\": {\"open\": \"08:00\", \"close\": \"18:00\", \"closed\": false},\n    \"saturday\": {\"open\": \"09:00\", \"close\": \"15:00\", \"closed\": false},\n    \"sunday\": {\"closed\": true}\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/garages",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "garages"]
+            }
+          }
+        },
+        {
+          "name": "📋 Get All Garages (Public)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/garages?page=1&limit=10&city=Addis%20Ababa",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "garages"]
+            }
+          }
+        },
+        {
+          "name": "📍 Get Nearby Garages",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/garages/nearby?lat=9.0054&lng=38.7578&radius=10",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "garages", "nearby"]
+            }
+          }
+        },
+        {
+          "name": "🔍 Get Garage By ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/garages/{{garageId}}",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "garages", "{{garageId}}"]
+            }
+          }
+        },
+        {
+          "name": "✏️ Update Garage",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{garageOwnerToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Updated description with new services available\",\n  \"contactInfo\": {\n    \"phone\": \"+251911223344\",\n    \"email\": \"updated@garage.com\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/garages/{{garageId}}",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "garages", "{{garageId}}"]
+            }
+          }
+        },
+        {
+          "name": "✅ Verify Garage (Admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"active\",\n  \"notes\": \"All documents verified\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/garages/{{garageId}}/verify",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "garages", "{{garageId}}", "verify"]
+            }
+          }
+        },
+        {
+          "name": "🔛 Toggle Active Status",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{garageOwnerToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/garages/{{garageId}}/toggle-active",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "garages", "{{garageId}}", "toggle-active"]
+            }
+          }
+        },
+        {
+          "name": "📊 Get Garage Analytics",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{garageOwnerToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/garages/{{garageId}}/analytics?period=month",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "garages", "{{garageId}}", "analytics"]
+            }
+          }
+        },
+        {
+          "name": "📋 Get Garage Services",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/garages/{{garageId}}/services?page=1&limit=20",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "garages", "{{garageId}}", "services"]
+            }
+          }
+        },
+        {
+          "name": "📝 Get Garage Reviews",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/garages/{{garageId}}/reviews?page=1&limit=10",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "garages", "{{garageId}}", "reviews"]
+            }
+          }
+        },
+        {
+          "name": "📅 Get Garage Bookings",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{garageOwnerToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/garages/{{garageId}}/bookings?status=pending&page=1",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "garages", "{{garageId}}", "bookings"]
+            }
+          }
+        },
+        {
+          "name": "🗑️ Delete Garage",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{garageOwnerToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/garages/{{garageId}}",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "garages", "{{garageId}}"]
+            }
+          }
+        },
+        {
+          "name": "🔄 Restore Garage (Admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/garages/{{garageId}}/restore",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "garages", "{{garageId}}", "restore"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🛠️ 4. SERVICES",
+      "item": [
+        {
+          "name": "➕ Create Service",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const jsonData = pm.response.json();",
+                  "if (jsonData.success && jsonData.data?.service?._id) {",
+                  "    pm.environment.set(\"serviceId\", jsonData.data.service._id);",
+                  "    console.log('🔧 Service created with ID:', jsonData.data.service._id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{garageOwnerToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Premium Oil Change\",\n  \"description\": \"Full synthetic oil change with filter replacement\",\n  \"price\": 1500,\n  \"duration\": 30,\n  \"category\": \"maintenance\",\n  \"garageId\": \"{{garageId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/services",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "services"]
+            }
+          }
+        },
+        {
+          "name": "📋 Get All Services",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/services?garageId={{garageId}}&category=maintenance",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "services"]
+            }
+          }
+        },
+        {
+          "name": "🔍 Get Service By ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/services/{{serviceId}}",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "services", "{{serviceId}}"]
+            }
+          }
+        },
+        {
+          "name": "✏️ Update Service",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{garageOwnerToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"price\": 1800,\n  \"description\": \"Updated: Premium synthetic oil with free inspection\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/services/{{serviceId}}",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "services", "{{serviceId}}"]
+            }
+          }
+        },
+        {
+          "name": "🔛 Toggle Availability",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{garageOwnerToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/services/{{serviceId}}/toggle-availability",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "services", "{{serviceId}}", "toggle-availability"]
+            }
+          }
+        },
+        {
+          "name": "📊 Get Service Analytics",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{garageOwnerToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/services/{{serviceId}}/analytics?period=month",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "services", "{{serviceId}}", "analytics"]
+            }
+          }
+        },
+        {
+          "name": "📅 Get Service Bookings",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{garageOwnerToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/services/{{serviceId}}/bookings?status=completed",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "services", "{{serviceId}}", "bookings"]
+            }
+          }
+        },
+        {
+          "name": "📋 Get Categories",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/services/categories/list",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "services", "categories", "list"]
+            }
+          }
+        },
+        {
+          "name": "🗑️ Delete Service",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{garageOwnerToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/services/{{serviceId}}",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "services", "{{serviceId}}"]
+            }
+          }
+        },
+        {
+          "name": "🔄 Restore Service",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/services/{{serviceId}}/restore",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "services", "{{serviceId}}", "restore"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "📅 5. BOOKINGS",
+      "item": [
+        {
+          "name": "✅ Check Availability",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"garageId\": \"{{garageId}}\",\n  \"serviceId\": \"{{serviceId}}\",\n  \"date\": \"2026-03-15\",\n  \"timeSlot\": {\n    \"start\": \"10:00\",\n    \"end\": \"10:30\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/bookings/check-availability",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "bookings", "check-availability"]
+            }
+          }
+        },
+        {
+          "name": "➕ Create Booking",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const jsonData = pm.response.json();",
+                  "if (jsonData.success && jsonData.data?.booking?._id) {",
+                  "    pm.environment.set(\"bookingId\", jsonData.data.booking._id);",
+                  "    console.log('📅 Booking created with ID:', jsonData.data.booking._id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{carOwnerToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"garageId\": \"{{garageId}}\",\n  \"serviceId\": \"{{serviceId}}\",\n  \"bookingDate\": \"2026-03-15\",\n  \"timeSlot\": {\n    \"start\": \"10:00\",\n    \"end\": \"10:30\"\n  },\n  \"vehicleInfo\": {\n    \"make\": \"Toyota\",\n    \"model\": \"Corolla\",\n    \"year\": 2020,\n    \"licensePlate\": \"AA-12345\"\n  },\n  \"notes\": \"Please check engine light\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/bookings",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "bookings"]
+            }
+          }
+        },
+        {
+          "name": "📋 Get All Bookings",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/bookings?page=1&limit=10&status=pending",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "bookings"]
+            }
+          }
+        },
+        {
+          "name": "🔍 Get Booking By ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/bookings/{{bookingId}}",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "bookings", "{{bookingId}}"]
+            }
+          }
+        },
+        {
+          "name": "📊 Get Booking Stats",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{garageOwnerToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/bookings/stats/analytics?period=month",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "bookings", "stats", "analytics"]
+            }
+          }
+        },
+        {
+          "name": "📅 Get Bookings Calendar",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{garageOwnerToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/bookings/calendar?startDate=2026-03-01&endDate=2026-03-31&garageId={{garageId}}",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "bookings", "calendar"]
+            }
+          }
+        },
+        {
+          "name": "⏱️ Get Booking Timeline",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/bookings/{{bookingId}}/timeline",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "bookings", "{{bookingId}}", "timeline"]
+            }
+          }
+        },
+        {
+          "name": "✅ Update Booking Status (Garage Owner)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{garageOwnerToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"approved\",\n  \"reason\": \"Slot available\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/bookings/{{bookingId}}/status",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "bookings", "{{bookingId}}", "status"]
+            }
+          }
+        },
+        {
+          "name": "❌ Cancel Booking (Car Owner)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{carOwnerToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Schedule changed\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/bookings/{{bookingId}}/cancel",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "bookings", "{{bookingId}}", "cancel"]
+            }
+          }
+        },
+        {
+          "name": "🗑️ Delete Booking",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/bookings/{{bookingId}}",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "bookings", "{{bookingId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "⭐ 6. REVIEWS",
+      "item": [
+        {
+          "name": "➕ Create Review",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const jsonData = pm.response.json();",
+                  "if (jsonData.success && jsonData.data?.review?._id) {",
+                  "    pm.environment.set(\"reviewId\", jsonData.data.review._id);",
+                  "    console.log('⭐ Review created with ID:', jsonData.data.review._id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{carOwnerToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"garageId\": \"{{garageId}}\",\n  \"bookingId\": \"{{bookingId}}\",\n  \"rating\": 5,\n  \"title\": \"Excellent Service!\",\n  \"comment\": \"Very professional and quick service. Highly recommended!\",\n  \"categories\": {\n    \"serviceQuality\": 5,\n    \"priceFairness\": 4,\n    \"timeliness\": 5,\n    \"cleanliness\": 5,\n    \"customerService\": 5\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/reviews",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "reviews"]
+            }
+          }
+        },
+        {
+          "name": "📋 Get All Reviews",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/reviews?garageId={{garageId}}&minRating=4",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "reviews"]
+            }
+          }
+        },
+        {
+          "name": "🔍 Get Review By ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/reviews/{{reviewId}}",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "reviews", "{{reviewId}}"]
+            }
+          }
+        },
+        {
+          "name": "📊 Get Garage Review Summary",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/reviews/garage/{{garageId}}/summary",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "reviews", "garage", "{{garageId}}", "summary"]
+            }
+          }
+        },
+        {
+          "name": "✏️ Update Review",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{carOwnerToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"comment\": \"Updated review: Still excellent service!\",\n  \"rating\": 5\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/reviews/{{reviewId}}",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "reviews", "{{reviewId}}"]
+            }
+          }
+        },
+        {
+          "name": "💬 Add Response (Garage Owner)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{garageOwnerToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"comment\": \"Thank you for your kind words! We're glad you enjoyed our service.\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/reviews/{{reviewId}}/response",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "reviews", "{{reviewId}}", "response"]
+            }
+          }
+        },
+        {
+          "name": "👍 Mark as Helpful",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{carOwnerToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/reviews/{{reviewId}}/helpful",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "reviews", "{{reviewId}}", "helpful"]
+            }
+          }
+        },
+        {
+          "name": "✅ Verify Review (Admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/reviews/{{reviewId}}/verify",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "reviews", "{{reviewId}}", "verify"]
+            }
+          }
+        },
+        {
+          "name": "🗑️ Delete Review",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/reviews/{{reviewId}}",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "reviews", "{{reviewId}}"]
+            }
+          }
+        },
+        {
+          "name": "🔄 Restore Review",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/reviews/{{reviewId}}/restore",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "reviews", "{{reviewId}}", "restore"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "💳 7. PAYMENTS",
+      "item": [
+        {
+          "name": "💰 Initialize Garage Payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{garageOwnerToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"garageId\": \"{{garageId}}\",\n  \"amount\": 1000\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/payments/garage/init",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "payments", "garage", "init"]
+            }
+          }
+        },
+        {
+          "name": "💰 Initialize Booking Payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{carOwnerToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bookingId\": \"{{bookingId}}\",\n  \"amount\": 1500\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/payments/booking/init",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "payments", "booking", "init"]
+            }
+          }
+        },
+        {
+          "name": "✅ Verify Payment",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/payments/verify/{{txRef}}",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "payments", "verify", "{{txRef}}"]
+            }
+          }
+        },
+        {
+          "name": "📋 Get All Payments",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/payments?paymentType=garage_creation&status=completed",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "payments"]
+            }
+          }
+        },
+        {
+          "name": "🔍 Get Payment By ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/payments/{{paymentId}}",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "payments", "{{paymentId}}"]
+            }
+          }
+        },
+        {
+          "name": "📊 Get Payment Statistics",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/payments/stats?period=month",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "payments", "stats"]
+            }
+          }
+        },
+        {
+          "name": "💳 Get Payment Methods",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/payments/methods",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "payments", "methods"]
+            }
+          }
+        },
+        {
+          "name": "🔄 Retry Failed Payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/payments/{{paymentId}}/retry",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "payments", "{{paymentId}}", "retry"]
+            }
+          }
+        },
+        {
+          "name": "💸 Initiate Refund (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Customer requested cancellation\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/payments/{{paymentId}}/refund",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "payments", "{{paymentId}}", "refund"]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000/api",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "adminToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "carOwnerToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "garageOwnerToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "adminEmail",
+      "value": "admin@example.com",
+      "type": "string"
+    },
+    {
+      "key": "adminPassword",
+      "value": "123456",
+      "type": "string"
+    },
+    {
+      "key": "carOwnerEmail",
+      "value": "carowner@example.com",
+      "type": "string"
+    },
+    {
+      "key": "carOwnerPassword",
+      "value": "123456",
+      "type": "string"
+    },
+    {
+      "key": "garageOwnerEmail",
+      "value": "garageowner@example.com",
+      "type": "string"
+    },
+    {
+      "key": "garageOwnerPassword",
+      "value": "123456",
+      "type": "string"
+    },
+    {
+      "key": "currentUserId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "currentUserRole",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "currentUserEmail",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "garageId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "serviceId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "bookingId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "reviewId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "paymentId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "txRef",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "adminId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "carOwnerId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "garageOwnerId",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}
