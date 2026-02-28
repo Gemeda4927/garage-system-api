@@ -1,6 +1,6 @@
 const Garage = require('../models/garage');
 const Service = require('../models/Service');
-const Booking = require('../models/Booking');
+const Booking = require('../models/booking');
 const Review = require('../models/Review');
 const User = require('../models/User');
 const Payment = require('../models/Payment');

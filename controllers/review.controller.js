@@ -3,7 +3,7 @@
 // ==========================================
 
 const Review = require('../models/Review');
-const Booking = require('../models/Booking');
+const Booking = require('../models/booking');
 const Garage = require('../models/garage');
 const User = require('../models/User');
 const mongoose = require('mongoose');
