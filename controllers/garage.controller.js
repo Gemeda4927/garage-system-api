@@ -185,6 +185,7 @@ const createGarage = async (req, res) => {
   }
 };
 
+
 // ==========================================
 // @desc    Get all garages (with filters)
 // @route   GET /api/garages
@@ -307,7 +308,7 @@ const getAllGarages = async (req, res) => {
       sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
     }
 
-    // Execute query
+    // Execute query with proper population
     const garages = await Garage.find(filter)
       .populate({
         path: 'owner',
@@ -317,7 +318,20 @@ const getAllGarages = async (req, res) => {
         path: 'services',
         select: 'name description price duration category images isAvailable',
         match: { isDeleted: false, isAvailable: true },
-        options: { limit: 5 }
+        options: { limit: 5 },
+        populate: {
+          path: 'bookings',
+          select: 'bookingDate timeSlot status carOwner',
+          match: { 
+            bookingDate: { $gte: new Date() },
+            status: { $in: ['pending', 'approved'] }
+          },
+          options: { limit: 3, sort: { bookingDate: 1 } },
+          populate: {
+            path: 'carOwner',
+            select: 'name phone'
+          }
+        }
       })
       .populate({
         path: 'reviews',
@@ -424,6 +438,13 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
 };
 
 const deg2rad = (deg) => deg * (Math.PI/180);
+
+// ==========================================
+// @desc    Get single garage by ID
+// @route   GET /api/garages/:id
+// @access  Public
+// ==========================================
+
 
 // ==========================================
 // @desc    Get single garage by ID
