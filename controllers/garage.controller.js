@@ -456,12 +456,16 @@ const getGarageById = async (req, res) => {
         options: { sort: { createdAt: -1 } },
         populate: {
           path: 'bookings',
-          select: 'bookingDate timeSlot status',
+          select: 'bookingDate timeSlot status carOwner',
           match: { 
             bookingDate: { $gte: new Date() },
             status: { $in: ['pending', 'approved'] }
           },
-          options: { limit: 5 }
+          options: { limit: 5, sort: { bookingDate: 1 } },
+          populate: {
+            path: 'carOwner',
+            select: 'name phone avatar'
+          }
         }
       })
       .populate({
@@ -540,7 +544,8 @@ const getGarageById = async (req, res) => {
         },
         status: { $nin: ['cancelled', 'rejected'] },
         isDeleted: false
-      }).select('bookingDate timeSlot')
+      }).select('bookingDate timeSlot service')
+        .populate('service', 'name')
     ]);
 
     garage.stats = {
@@ -975,12 +980,16 @@ const getGarageServices = async (req, res) => {
       .select('name description price duration category images isAvailable')
       .populate({
         path: 'bookings',
-        select: 'bookingDate timeSlot status',
+        select: 'bookingDate timeSlot status carOwner',
         match: { 
           bookingDate: { $gte: new Date() },
           status: { $in: ['pending', 'approved'] }
         },
-        options: { limit: 5 }
+        options: { limit: 5, sort: { bookingDate: 1 } },
+        populate: {
+          path: 'carOwner',
+          select: 'name phone'
+        }
       })
       .populate({
         path: 'garage',
@@ -1025,6 +1034,177 @@ const getGarageServices = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error fetching garage services',
+      error: error.message
+    });
+  }
+};
+
+// ==========================================
+// @desc    Get service bookings for a garage
+// @route   GET /api/garages/:id/service-bookings
+// @access  Private (Garage Owner or Admin)
+// ==========================================
+const getGarageServiceBookings = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { serviceId, date, status, page = 1, limit = 20 } = req.query;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid garage ID'
+      });
+    }
+
+    const garage = await Garage.findById(id);
+    if (!garage || garage.isDeleted) {
+      return res.status(404).json({
+        success: false,
+        message: 'Garage not found'
+      });
+    }
+
+    const isOwner = garage.owner.toString() === req.user.id;
+    if (!isOwner && req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to view these bookings'
+      });
+    }
+
+    // Build filter
+    const filter = { 
+      garage: id,
+      isDeleted: false 
+    };
+
+    if (serviceId) {
+      filter.service = serviceId;
+    }
+
+    if (status) {
+      filter.status = status;
+    }
+
+    if (date) {
+      const startDate = new Date(date);
+      startDate.setHours(0, 0, 0, 0);
+      const endDate = new Date(date);
+      endDate.setHours(23, 59, 59, 999);
+      filter.bookingDate = { $gte: startDate, $lte: endDate };
+    }
+
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+
+    const bookings = await Booking.find(filter)
+      .populate({
+        path: 'service',
+        select: 'name price duration category'
+      })
+      .populate({
+        path: 'carOwner',
+        select: 'name phone email avatar'
+      })
+      .populate({
+        path: 'payment',
+        select: 'amount status method transactionId'
+      })
+      .sort({ bookingDate: -1, 'timeSlot.start': 1 })
+      .skip(skip)
+      .limit(limitNum);
+
+    const total = await Booking.countDocuments(filter);
+
+    // Group by service for statistics
+    const groupedByService = await Booking.aggregate([
+      {
+        $match: {
+          garage: new mongoose.Types.ObjectId(id),
+          isDeleted: false
+        }
+      },
+      {
+        $group: {
+          _id: '$service',
+          totalBookings: { $sum: 1 },
+          upcomingBookings: {
+            $sum: {
+              $cond: [
+                { 
+                  $and: [
+                    { $gte: ['$bookingDate', new Date()] },
+                    { $in: ['$status', ['pending', 'approved']] }
+                  ]
+                },
+                1,
+                0
+              ]
+            }
+          },
+          completedBookings: {
+            $sum: {
+              $cond: [{ $eq: ['$status', 'completed'] }, 1, 0]
+            }
+          },
+          cancelledBookings: {
+            $sum: {
+              $cond: [{ $eq: ['$status', 'cancelled'] }, 1, 0]
+            }
+          },
+          totalRevenue: {
+            $sum: {
+              $cond: [{ $eq: ['$isPaid', true] }, '$price.total', 0]
+            }
+          }
+        }
+      },
+      {
+        $lookup: {
+          from: 'services',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'serviceInfo'
+        }
+      },
+      {
+        $unwind: '$serviceInfo'
+      },
+      {
+        $project: {
+          serviceId: '$_id',
+          serviceName: '$serviceInfo.name',
+          category: '$serviceInfo.category',
+          price: '$serviceInfo.price',
+          totalBookings: 1,
+          upcomingBookings: 1,
+          completedBookings: 1,
+          cancelledBookings: 1,
+          totalRevenue: 1
+        }
+      }
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        bookings,
+        groupedByService,
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total,
+          pages: Math.ceil(total / limitNum)
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Get garage service bookings error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching service bookings',
       error: error.message
     });
   }
@@ -1307,22 +1487,7 @@ const getGarageBookings = async (req, res) => {
               }
             }
           ],
-          dailyStats: [
-            {
-              $match: {
-                bookingDate: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) }
-              }
-            },
-            {
-              $group: {
-                _id: { $dateToString: { format: '%Y-%m-%d', date: '$bookingDate' } },
-                count: { $sum: 1 },
-                revenue: { $sum: '$price.total' }
-              }
-            },
-            { $sort: { '_id': 1 } }
-          ],
-          popularServices: [
+          byService: [
             {
               $group: {
                 _id: '$service',
@@ -1349,6 +1514,36 @@ const getGarageBookings = async (req, res) => {
                 revenue: 1
               }
             }
+          ],
+          dailyStats: [
+            {
+              $match: {
+                bookingDate: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) }
+              }
+            },
+            {
+              $group: {
+                _id: { $dateToString: { format: '%Y-%m-%d', date: '$bookingDate' } },
+                count: { $sum: 1 },
+                revenue: { $sum: '$price.total' }
+              }
+            },
+            { $sort: { '_id': 1 } }
+          ],
+          upcomingStats: [
+            {
+              $match: {
+                bookingDate: { $gte: new Date() },
+                status: { $in: ['pending', 'approved'] }
+              }
+            },
+            {
+              $group: {
+                _id: null,
+                total: { $sum: 1 },
+                estimatedRevenue: { $sum: '$price.total' }
+              }
+            }
           ]
         }
       }
@@ -1372,8 +1567,9 @@ const getGarageBookings = async (req, res) => {
         bookings,
         stats: {
           byStatus: stats[0]?.byStatus || [],
+          byService: stats[0]?.byService || [],
           dailyStats: stats[0]?.dailyStats || [],
-          popularServices: stats[0]?.popularServices || [],
+          upcomingStats: stats[0]?.upcomingStats[0] || { total: 0, estimatedRevenue: 0 },
           totalRevenue,
           upcomingBookings,
           totalBookings: total
@@ -1929,6 +2125,7 @@ module.exports = {
   uploadFiles,
   deleteFile,
   getGarageServices,
+  getGarageServiceBookings,
   getGarageReviews,
   getGarageBookings,
   getGarageAnalytics,
