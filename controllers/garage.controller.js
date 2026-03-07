@@ -109,25 +109,25 @@ const createGarage = async (req, res) => {
         coordinates: coordinates || [38.7578, 9.0054]
       },
       address: {
-        street: address.street,
-        city: address.city,
-        state: address.state || '',
-        country: address.country || 'Ethiopia',
-        zipCode: address.zipCode || ''
+        street: address?.street || '',
+        city: address?.city || '',
+        state: address?.state || '',
+        country: address?.country || 'Ethiopia',
+        zipCode: address?.zipCode || ''
       },
       contactInfo: {
-        phone: contactInfo.phone,
-        email: contactInfo.email || '',
-        website: contactInfo.website || ''
+        phone: contactInfo?.phone || '',
+        email: contactInfo?.email || '',
+        website: contactInfo?.website || ''
       },
       businessHours: {
-        monday: businessHours.monday || { open: '09:00', close: '18:00', closed: false },
-        tuesday: businessHours.tuesday || { open: '09:00', close: '18:00', closed: false },
-        wednesday: businessHours.wednesday || { open: '09:00', close: '18:00', closed: false },
-        thursday: businessHours.thursday || { open: '09:00', close: '18:00', closed: false },
-        friday: businessHours.friday || { open: '09:00', close: '18:00', closed: false },
-        saturday: businessHours.saturday || { open: '09:00', close: '15:00', closed: false },
-        sunday: businessHours.sunday || { closed: true }
+        monday: businessHours?.monday || { open: '09:00', close: '18:00', closed: false },
+        tuesday: businessHours?.tuesday || { open: '09:00', close: '18:00', closed: false },
+        wednesday: businessHours?.wednesday || { open: '09:00', close: '18:00', closed: false },
+        thursday: businessHours?.thursday || { open: '09:00', close: '18:00', closed: false },
+        friday: businessHours?.friday || { open: '09:00', close: '18:00', closed: false },
+        saturday: businessHours?.saturday || { open: '09:00', close: '15:00', closed: false },
+        sunday: businessHours?.sunday || { closed: true }
       },
       owner: req.user.id,
       creationPayment: payment._id,
@@ -149,11 +149,16 @@ const createGarage = async (req, res) => {
     await session.commitTransaction();
     session.endSession();
 
+    // Populate the created garage
+    const populatedGarage = await Garage.findById(garage[0]._id)
+      .populate('owner', 'name email phone avatar')
+      .populate('creationPayment', 'amount transactionId createdAt');
+
     res.status(201).json({
       success: true,
       message: 'Garage created successfully. Pending verification.',
       data: {
-        garage: garage[0]
+        garage: populatedGarage
       }
     });
 
@@ -204,30 +209,28 @@ const getAllGarages = async (req, res) => {
       sortOrder = 'desc'
     } = req.query;
 
+    // Build filter
     const filter = { isDeleted: false };
-    const andConditions = [];
 
     // Handle user-specific visibility
     if (req.user && req.user.id) {
       const userGarages = await Garage.find({ owner: req.user.id }).distinct('_id');
       
-      const visibilityCondition = {
-        $or: [
-          { status: 'active', isActive: true },
-          { _id: { $in: userGarages } }
-        ]
-      };
-      andConditions.push(visibilityCondition);
+      filter.$or = [
+        { status: 'active', isActive: true },
+        { _id: { $in: userGarages } }
+      ];
     } else {
       filter.status = 'active';
       filter.isActive = true;
     }
 
-    // Apply filters
+    // City filter
     if (city) {
       filter['address.city'] = { $regex: city, $options: 'i' };
     }
 
+    // Service filter
     if (service) {
       const services = await Service.find({ 
         name: { $regex: service, $options: 'i' },
@@ -237,29 +240,36 @@ const getAllGarages = async (req, res) => {
       if (services.length > 0) {
         filter._id = { $in: services };
       } else {
-        filter._id = { $in: [] }; // No results
+        filter._id = { $in: [] };
       }
     }
 
+    // Rating filter
     if (minRating) {
       filter['stats.averageRating'] = { $gte: parseFloat(minRating) };
     }
 
+    // Verified filter
     if (isVerified !== undefined) {
       filter.isVerified = isVerified === 'true';
     }
 
+    // Status filter (admin only)
     if (status && req.user && req.user.role === 'admin') {
       filter.status = status;
     }
 
+    // Search filter
     if (search) {
-      filter.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } },
-        { 'address.street': { $regex: search, $options: 'i' } },
-        { 'address.city': { $regex: search, $options: 'i' } }
-      ];
+      filter.$and = filter.$and || [];
+      filter.$and.push({
+        $or: [
+          { name: { $regex: search, $options: 'i' } },
+          { description: { $regex: search, $options: 'i' } },
+          { 'address.street': { $regex: search, $options: 'i' } },
+          { 'address.city': { $regex: search, $options: 'i' } }
+        ]
+      });
     }
 
     // Geospatial query
@@ -275,24 +285,21 @@ const getAllGarages = async (req, res) => {
       };
     }
 
-    // Combine with AND conditions if any
-    if (andConditions.length > 0) {
-      filter.$and = andConditions;
-    }
-
     // Pagination
     const pageNum = parseInt(page);
     const limitNum = parseInt(limit);
     const skip = (pageNum - 1) * limitNum;
 
     // Sorting
-    const sort = {};
+    let sort = {};
     if (sortBy === 'distance' && lat && lng) {
-      sort['coordinates'] = {
-        $near: {
-          $geometry: {
-            type: 'Point',
-            coordinates: [parseFloat(lng), parseFloat(lat)]
+      sort = {
+        coordinates: {
+          $near: {
+            $geometry: {
+              type: 'Point',
+              coordinates: [parseFloat(lng), parseFloat(lat)]
+            }
           }
         }
       };
@@ -302,15 +309,20 @@ const getAllGarages = async (req, res) => {
 
     // Execute query
     const garages = await Garage.find(filter)
-      .populate('owner', 'name email phone avatar')
+      .populate({
+        path: 'owner',
+        select: 'name email phone avatar'
+      })
       .populate({
         path: 'services',
         select: 'name description price duration category images isAvailable',
-        match: { isDeleted: false, isAvailable: true }
+        match: { isDeleted: false, isAvailable: true },
+        options: { limit: 5 }
       })
       .populate({
         path: 'reviews',
         select: 'rating comment carOwner createdAt',
+        match: { isDeleted: false, isVerified: true },
         options: { 
           limit: 3,
           sort: { createdAt: -1 }
@@ -340,33 +352,44 @@ const getAllGarages = async (req, res) => {
           };
         }
       });
-
-      if (sortBy === 'distance') {
-        garages.sort((a, b) => (a.distance?.value || Infinity) - (b.distance?.value || Infinity));
-      }
     }
 
+    // Get total count
     const total = await Garage.countDocuments(filter);
 
-    // Get price range
+    // Get price range for filtered garages
     const garageIds = garages.map(g => g._id);
-    const priceRange = garageIds.length > 0 ? await Service.aggregate([
-      { $match: { garage: { $in: garageIds }, isDeleted: false } },
-      {
-        $group: {
-          _id: null,
-          minPrice: { $min: '$price' },
-          maxPrice: { $max: '$price' },
-          avgPrice: { $avg: '$price' }
+    let priceRange = { minPrice: 0, maxPrice: 0, avgPrice: 0 };
+    
+    if (garageIds.length > 0) {
+      const priceRangeResult = await Service.aggregate([
+        { 
+          $match: { 
+            garage: { $in: garageIds }, 
+            isDeleted: false,
+            isAvailable: true 
+          } 
+        },
+        {
+          $group: {
+            _id: null,
+            minPrice: { $min: '$price' },
+            maxPrice: { $max: '$price' },
+            avgPrice: { $avg: '$price' }
+          }
         }
+      ]);
+      
+      if (priceRangeResult.length > 0) {
+        priceRange = priceRangeResult[0];
       }
-    ]) : [];
+    }
 
     res.status(200).json({
       success: true,
       data: {
         garages,
-        priceRange: priceRange[0] || { minPrice: 0, maxPrice: 0, avgPrice: 0 },
+        priceRange,
         pagination: {
           page: pageNum,
           limit: limitNum,
@@ -422,11 +445,15 @@ const getGarageById = async (req, res) => {
       _id: id, 
       isDeleted: false 
     })
-      .populate('owner', 'name email phone avatar')
+      .populate({
+        path: 'owner',
+        select: 'name email phone avatar'
+      })
       .populate({
         path: 'services',
-        select: 'name description price duration category images isAvailable',
+        select: 'name description price duration category images isAvailable createdAt',
         match: { isDeleted: false },
+        options: { sort: { createdAt: -1 } },
         populate: {
           path: 'bookings',
           select: 'bookingDate timeSlot status',
@@ -439,7 +466,7 @@ const getGarageById = async (req, res) => {
       })
       .populate({
         path: 'reviews',
-        match: { isDeleted: false },
+        match: { isDeleted: false, isVerified: true },
         options: { 
           sort: { createdAt: -1 },
           limit: 10
@@ -458,6 +485,10 @@ const getGarageById = async (req, res) => {
             }
           }
         ]
+      })
+      .populate({
+        path: 'creationPayment',
+        select: 'amount transactionId createdAt status'
       })
       .lean();
 
@@ -480,7 +511,13 @@ const getGarageById = async (req, res) => {
     }
 
     // Get additional stats
-    const [totalBookings, completedBookings, upcomingBookings, recentBookings] = await Promise.all([
+    const [
+      totalBookings,
+      completedBookings,
+      upcomingBookings,
+      recentBookings,
+      todayBookings
+    ] = await Promise.all([
       Booking.countDocuments({ garage: id, isDeleted: false }),
       Booking.countDocuments({ garage: id, status: 'completed', isDeleted: false }),
       Booking.countDocuments({ 
@@ -494,19 +531,17 @@ const getGarageById = async (req, res) => {
         .populate('service', 'name price')
         .sort({ createdAt: -1 })
         .limit(5)
+        .lean(),
+      Booking.find({
+        garage: id,
+        bookingDate: { 
+          $gte: new Date().setHours(0, 0, 0, 0),
+          $lte: new Date().setHours(23, 59, 59, 999)
+        },
+        status: { $nin: ['cancelled', 'rejected'] },
+        isDeleted: false
+      }).select('bookingDate timeSlot')
     ]);
-
-    // Get today's bookings
-    const today = new Date();
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-
-    const todayBookings = await Booking.find({
-      garage: id,
-      bookingDate: { $gte: today, $lte: tomorrow },
-      status: { $nin: ['cancelled', 'rejected'] },
-      isDeleted: false
-    }).select('bookingDate timeSlot');
 
     garage.stats = {
       ...garage.stats,
@@ -564,23 +599,20 @@ const updateGarage = async (req, res) => {
       });
     }
 
-    
+    const isOwner = garage.owner.toString() === req.user.id.toString();
+    const isAdmin = req.user.role === 'admin';
 
-    
-const isOwner = garage.owner.toString() === req.user.id.toString();
-const isAdmin = req.user.role === 'admin';
-
-if (!isOwner && !isAdmin) {
-  await session.abortTransaction();
-  session.endSession();
-  return res.status(403).json({
-    success: false,
-    message: 'Not authorized to update this garage'
-  });
-}
+    if (!isOwner && !isAdmin) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to update this garage'
+      });
+    }
 
     // Filter allowed updates for non-admin
-    if (req.user.role !== 'admin') {
+    if (!isAdmin) {
       const allowedUpdates = [
         'name', 'description', 'coordinates', 'address',
         'contactInfo', 'businessHours', 'images', 'documents'
@@ -592,18 +624,34 @@ if (!isOwner && !isAdmin) {
       });
     }
 
+    // Handle business hours update properly
+    if (updates.businessHours) {
+      Object.keys(updates.businessHours).forEach(day => {
+        if (garage.businessHours[day]) {
+          garage.businessHours[day] = {
+            ...garage.businessHours[day].toObject(),
+            ...updates.businessHours[day]
+          };
+        }
+      });
+      delete updates.businessHours;
+    }
+
+    // Apply other updates
     Object.assign(garage, updates);
     await garage.save({ session });
 
     await session.commitTransaction();
     session.endSession();
 
+    // Populate updated garage
     const updatedGarage = await Garage.findById(id)
-      .populate('owner', 'name email phone')
+      .populate('owner', 'name email phone avatar')
       .populate({
         path: 'services',
-        select: 'name price duration',
-        match: { isDeleted: false }
+        select: 'name price duration category',
+        match: { isDeleted: false },
+        options: { limit: 5 }
       });
 
     res.status(200).json({
@@ -865,10 +913,14 @@ const deleteFile = async (req, res) => {
     }
     await garage.save();
 
+    // Delete file from filesystem
     try {
-      await fs.unlink(path.join(__dirname, '..', filePath));
+      const fullPath = path.join(__dirname, '..', filePath);
+      await fs.access(fullPath);
+      await fs.unlink(fullPath);
     } catch (fileError) {
-      console.error('Error deleting file:', fileError);
+      console.error('Error deleting file from filesystem:', fileError);
+      // Continue even if file doesn't exist
     }
 
     res.status(200).json({
@@ -930,16 +982,36 @@ const getGarageServices = async (req, res) => {
         },
         options: { limit: 5 }
       })
+      .populate({
+        path: 'garage',
+        select: 'name address contactInfo'
+      })
       .skip(skip)
       .limit(limitNum)
       .sort('category name');
 
     const total = await Service.countDocuments(filter);
 
+    // Get category summary
+    const categorySummary = await Service.aggregate([
+      { $match: { garage: new mongoose.Types.ObjectId(id), isDeleted: false } },
+      {
+        $group: {
+          _id: '$category',
+          count: { $sum: 1 },
+          minPrice: { $min: '$price' },
+          maxPrice: { $max: '$price' },
+          avgPrice: { $avg: '$price' }
+        }
+      },
+      { $sort: { '_id': 1 } }
+    ]);
+
     res.status(200).json({
       success: true,
       data: {
         services,
+        categorySummary,
         pagination: {
           page: pageNum,
           limit: limitNum,
@@ -993,7 +1065,11 @@ const getGarageReviews = async (req, res) => {
     }
 
     if (hasResponse !== undefined) {
-      filter['response.comment'] = hasResponse === 'true' ? { $exists: true } : { $exists: false };
+      if (hasResponse === 'true') {
+        filter['response.comment'] = { $exists: true, $ne: null };
+      } else {
+        filter['response.comment'] = { $exists: false };
+      }
     }
 
     const pageNum = parseInt(page);
@@ -1004,7 +1080,10 @@ const getGarageReviews = async (req, res) => {
     sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
 
     const reviews = await Review.find(filter)
-      .populate('carOwner', 'name avatar')
+      .populate({
+        path: 'carOwner',
+        select: 'name avatar'
+      })
       .populate({
         path: 'booking',
         select: 'service timeSlot bookingDate',
@@ -1013,13 +1092,18 @@ const getGarageReviews = async (req, res) => {
           select: 'name price'
         }
       })
-      .populate('response.respondedBy', 'name email')
+      .populate({
+        path: 'response.respondedBy',
+        select: 'name email role'
+      })
       .sort(sort)
       .skip(skip)
-      .limit(limitNum);
+      .limit(limitNum)
+      .lean();
 
     const total = await Review.countDocuments(filter);
 
+    // Get rating distribution
     const ratingDistribution = await Review.aggregate([
       { $match: { garage: new mongoose.Types.ObjectId(id), isDeleted: false } },
       {
@@ -1031,16 +1115,59 @@ const getGarageReviews = async (req, res) => {
       { $sort: { '_id': 1 } }
     ]);
 
-    const averageRating = reviews.length > 0 
-      ? reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length 
-      : 0;
+    // Calculate average rating
+    const averageRating = await Review.aggregate([
+      { $match: { garage: new mongoose.Types.ObjectId(id), isDeleted: false } },
+      {
+        $group: {
+          _id: null,
+          avgRating: { $avg: '$rating' },
+          totalReviews: { $sum: 1 }
+        }
+      }
+    ]);
+
+    // Get response rate
+    const responseRate = await Review.aggregate([
+      { 
+        $match: { 
+          garage: new mongoose.Types.ObjectId(id), 
+          isDeleted: false 
+        } 
+      },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: 1 },
+          responded: { 
+            $sum: { 
+              $cond: [{ $ne: ['$response.comment', null] }, 1, 0] 
+            } 
+          }
+        }
+      },
+      {
+        $project: {
+          responseRate: { 
+            $multiply: [
+              { $divide: ['$responded', '$total'] }, 
+              100
+            ]
+          }
+        }
+      }
+    ]);
 
     res.status(200).json({
       success: true,
       data: {
         reviews,
-        ratingDistribution,
-        averageRating: Math.round(averageRating * 10) / 10,
+        summary: {
+          averageRating: averageRating[0]?.avgRating || 0,
+          totalReviews: averageRating[0]?.totalReviews || 0,
+          ratingDistribution,
+          responseRate: responseRate[0]?.responseRate || 0
+        },
         pagination: {
           page: pageNum,
           limit: limitNum,
@@ -1072,7 +1199,9 @@ const getGarageBookings = async (req, res) => {
       startDate,
       endDate,
       page = 1,
-      limit = 20
+      limit = 20,
+      sortBy = 'bookingDate',
+      sortOrder = 'desc'
     } = req.query;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -1109,16 +1238,30 @@ const getGarageBookings = async (req, res) => {
 
     if (startDate || endDate) {
       filter.bookingDate = {};
-      if (startDate) filter.bookingDate.$gte = new Date(startDate);
-      if (endDate) filter.bookingDate.$lte = new Date(endDate);
+      if (startDate) {
+        const start = new Date(startDate);
+        start.setHours(0, 0, 0, 0);
+        filter.bookingDate.$gte = start;
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        filter.bookingDate.$lte = end;
+      }
     }
 
     const pageNum = parseInt(page);
     const limitNum = parseInt(limit);
     const skip = (pageNum - 1) * limitNum;
 
+    const sort = {};
+    sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
+
     const bookings = await Booking.find(filter)
-      .populate('carOwner', 'name email phone avatar')
+      .populate({
+        path: 'carOwner',
+        select: 'name email phone avatar'
+      })
       .populate({
         path: 'service',
         select: 'name price duration category',
@@ -1127,51 +1270,113 @@ const getGarageBookings = async (req, res) => {
           select: 'name'
         }
       })
-      .populate('payment', 'amount status method transactionId')
+      .populate({
+        path: 'payment',
+        select: 'amount status method transactionId createdAt'
+      })
       .populate({
         path: 'review',
-        select: 'rating comment',
+        select: 'rating comment createdAt',
         populate: {
           path: 'carOwner',
           select: 'name'
         }
       })
-      .sort({ bookingDate: -1, 'timeSlot.start': 1 })
+      .sort(sort)
       .skip(skip)
-      .limit(limitNum);
+      .limit(limitNum)
+      .lean();
 
     const total = await Booking.countDocuments(filter);
 
+    // Get comprehensive stats
     const stats = await Booking.aggregate([
-      { $match: { ...filter, garage: new mongoose.Types.ObjectId(id) } },
+      { $match: { garage: new mongoose.Types.ObjectId(id), isDeleted: false } },
       {
-        $group: {
-          _id: null,
-          totalRevenue: { $sum: { $cond: [{ $eq: ['$isPaid', true] }, '$price.total', 0] } },
-          totalBookings: { $sum: 1 },
-          pendingCount: { $sum: { $cond: [{ $eq: ['$status', 'pending'] }, 1, 0] } },
-          approvedCount: { $sum: { $cond: [{ $eq: ['$status', 'approved'] }, 1, 0] } },
-          inProgressCount: { $sum: { $cond: [{ $eq: ['$status', 'in_progress'] }, 1, 0] } },
-          completedCount: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } },
-          cancelledCount: { $sum: { $cond: [{ $eq: ['$status', 'cancelled'] }, 1, 0] } },
-          rejectedCount: { $sum: { $cond: [{ $eq: ['$status', 'rejected'] }, 1, 0] } }
+        $facet: {
+          byStatus: [
+            {
+              $group: {
+                _id: '$status',
+                count: { $sum: 1 },
+                revenue: { 
+                  $sum: { 
+                    $cond: [{ $eq: ['$isPaid', true] }, '$price.total', 0] 
+                  } 
+                }
+              }
+            }
+          ],
+          dailyStats: [
+            {
+              $match: {
+                bookingDate: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) }
+              }
+            },
+            {
+              $group: {
+                _id: { $dateToString: { format: '%Y-%m-%d', date: '$bookingDate' } },
+                count: { $sum: 1 },
+                revenue: { $sum: '$price.total' }
+              }
+            },
+            { $sort: { '_id': 1 } }
+          ],
+          popularServices: [
+            {
+              $group: {
+                _id: '$service',
+                count: { $sum: 1 },
+                revenue: { $sum: '$price.total' }
+              }
+            },
+            { $sort: { count: -1 } },
+            { $limit: 5 },
+            {
+              $lookup: {
+                from: 'services',
+                localField: '_id',
+                foreignField: '_id',
+                as: 'serviceInfo'
+              }
+            },
+            { $unwind: '$serviceInfo' },
+            {
+              $project: {
+                serviceName: '$serviceInfo.name',
+                category: '$serviceInfo.category',
+                count: 1,
+                revenue: 1
+              }
+            }
+          ]
         }
       }
     ]);
+
+    // Calculate total revenue and upcoming
+    const totalRevenue = bookings
+      .filter(b => b.isPaid)
+      .reduce((sum, b) => sum + (b.price?.total || 0), 0);
+
+    const upcomingBookings = await Booking.countDocuments({
+      garage: id,
+      bookingDate: { $gte: new Date() },
+      status: { $in: ['pending', 'approved'] },
+      isDeleted: false
+    });
 
     res.status(200).json({
       success: true,
       data: {
         bookings,
-        stats: stats[0] || {
-          totalRevenue: 0,
-          totalBookings: 0,
-          pendingCount: 0,
-          approvedCount: 0,
-          inProgressCount: 0,
-          completedCount: 0,
-          cancelledCount: 0,
-          rejectedCount: 0
+        stats: {
+          byStatus: stats[0]?.byStatus || [],
+          dailyStats: stats[0]?.dailyStats || [],
+          popularServices: stats[0]?.popularServices || [],
+          totalRevenue,
+          upcomingBookings,
+          totalBookings: total
         },
         pagination: {
           page: pageNum,
@@ -1216,33 +1421,40 @@ const getGarageAnalytics = async (req, res) => {
       });
     }
 
+    const isOwner = garage.owner.toString() === req.user.id.toString();
+    const isAdmin = req.user.role === 'admin';
 
-const isOwner = garage.owner.toString() === req.user.id.toString();
-const isAdmin = req.user.role === 'admin';
-
-if (!isOwner && !isAdmin) {
-  return res.status(403).json({
-    success: false,
-    message: 'Not authorized to view analytics'
-  });
-}
+    if (!isOwner && !isAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to view analytics'
+      });
+    }
 
     const endDate = new Date();
     let startDate = new Date();
+    let previousStartDate = new Date();
     
     switch (period) {
       case 'week':
         startDate.setDate(startDate.getDate() - 7);
+        previousStartDate.setDate(previousStartDate.getDate() - 14);
         break;
       case 'month':
         startDate.setMonth(startDate.getMonth() - 1);
+        previousStartDate.setMonth(previousStartDate.getMonth() - 2);
         break;
       case 'quarter':
         startDate.setMonth(startDate.getMonth() - 3);
+        previousStartDate.setMonth(previousStartDate.getMonth() - 6);
         break;
       case 'year':
         startDate.setFullYear(startDate.getFullYear() - 1);
+        previousStartDate.setFullYear(previousStartDate.getFullYear() - 2);
         break;
+      default:
+        startDate.setMonth(startDate.getMonth() - 1);
+        previousStartDate.setMonth(previousStartDate.getMonth() - 2);
     }
 
     const analytics = await Booking.aggregate([
@@ -1261,10 +1473,17 @@ if (!isOwner && !isAdmin) {
                 _id: {
                   year: { $year: '$bookingDate' },
                   month: { $month: '$bookingDate' },
-                  day: { $dayOfMonth: '$bookingDate' }
+                  day: { $dayOfMonth: '$bookingDate' },
+                  week: { $week: '$bookingDate' }
                 },
-                total: { $sum: { $cond: [{ $eq: ['$isPaid', true] }, '$price.total', 0] } },
-                count: { $sum: 1 }
+                date: { $first: '$bookingDate' },
+                total: { 
+                  $sum: { 
+                    $cond: [{ $eq: ['$isPaid', true] }, '$price.total', 0] 
+                  } 
+                },
+                count: { $sum: 1 },
+                avgValue: { $avg: '$price.total' }
               }
             },
             { $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1 } }
@@ -1274,11 +1493,15 @@ if (!isOwner && !isAdmin) {
               $group: {
                 _id: '$service',
                 count: { $sum: 1 },
-                revenue: { $sum: { $cond: [{ $eq: ['$isPaid', true] }, '$price.total', 0] } }
+                revenue: { 
+                  $sum: { 
+                    $cond: [{ $eq: ['$isPaid', true] }, '$price.total', 0] 
+                  } 
+                }
               }
             },
             { $sort: { count: -1 } },
-            { $limit: 5 },
+            { $limit: 10 },
             {
               $lookup: {
                 from: 'services',
@@ -1292,6 +1515,7 @@ if (!isOwner && !isAdmin) {
               $project: {
                 serviceName: '$serviceInfo.name',
                 category: '$serviceInfo.category',
+                price: '$serviceInfo.price',
                 count: 1,
                 revenue: 1
               }
@@ -1302,7 +1526,11 @@ if (!isOwner && !isAdmin) {
               $group: {
                 _id: '$status',
                 count: { $sum: 1 },
-                revenue: { $sum: { $cond: [{ $eq: ['$isPaid', true] }, '$price.total', 0] } }
+                revenue: { 
+                  $sum: { 
+                    $cond: [{ $eq: ['$isPaid', true] }, '$price.total', 0] 
+                  } 
+                }
               }
             }
           ],
@@ -1320,33 +1548,45 @@ if (!isOwner && !isAdmin) {
             {
               $group: {
                 _id: '$carOwner',
-                count: { $sum: 1 }
+                count: { $sum: 1 },
+                totalSpent: { $sum: '$price.total' }
               }
             },
             {
               $group: {
                 _id: null,
-                oneTime: { $sum: { $cond: [{ $eq: ['$count', 1] }, 1, 0] } },
-                returning: { $sum: { $cond: [{ $gt: ['$count', 1] }, 1, 0] } },
-                frequent: { $sum: { $cond: [{ $gt: ['$count', 3] }, 1, 0] } }
+                oneTime: { 
+                  $sum: { $cond: [{ $eq: ['$count', 1] }, 1, 0] } 
+                },
+                returning: { 
+                  $sum: { $cond: [{ $gt: ['$count', 1] }, 1, 0] } 
+                },
+                frequent: { 
+                  $sum: { $cond: [{ $gt: ['$count', 3] }, 1, 0] } 
+                },
+                averageSpent: { $avg: '$totalSpent' }
               }
             }
+          ],
+          peakDays: [
+            {
+              $group: {
+                _id: { $dayOfWeek: '$bookingDate' },
+                count: { $sum: 1 }
+              }
+            },
+            { $sort: { count: -1 } }
           ]
         }
       }
     ]);
 
-    const previousStartDate = new Date(startDate);
-    const previousEndDate = new Date(endDate);
-    const periodLength = endDate - startDate;
-    previousStartDate.setTime(previousStartDate.getTime() - periodLength);
-    previousEndDate.setTime(previousEndDate.getTime() - periodLength);
-
+    // Get previous period for comparison
     const previousPeriodStats = await Booking.aggregate([
       {
         $match: {
           garage: new mongoose.Types.ObjectId(id),
-          bookingDate: { $gte: previousStartDate, $lte: previousEndDate },
+          bookingDate: { $gte: previousStartDate, $lte: startDate },
           isDeleted: false
         }
       },
@@ -1354,28 +1594,45 @@ if (!isOwner && !isAdmin) {
         $group: {
           _id: null,
           totalBookings: { $sum: 1 },
-          totalRevenue: { $sum: { $cond: [{ $eq: ['$isPaid', true] }, '$price.total', 0] } }
+          totalRevenue: { 
+            $sum: { 
+              $cond: [{ $eq: ['$isPaid', true] }, '$price.total', 0] 
+            } 
+          },
+          averageValue: { $avg: '$price.total' }
         }
       }
     ]);
 
-    const currentRevenue = analytics[0]?.revenue?.reduce((acc, d) => acc + d.total, 0) || 0;
-    const currentBookings = analytics[0]?.revenue?.length || 0;
+    const currentStats = analytics[0]?.revenue?.reduce(
+      (acc, day) => ({
+        totalRevenue: acc.totalRevenue + day.total,
+        totalBookings: acc.totalBookings + day.count,
+        avgValue: (acc.totalRevenue + day.total) / (acc.totalBookings + day.count) || 0
+      }),
+      { totalRevenue: 0, totalBookings: 0, avgValue: 0 }
+    ) || { totalRevenue: 0, totalBookings: 0, avgValue: 0 };
+
+    const previous = previousPeriodStats[0] || { totalBookings: 0, totalRevenue: 0, averageValue: 0 };
 
     res.status(200).json({
       success: true,
       data: {
         period,
         dateRange: { startDate, endDate },
-        analytics: analytics[0],
-        comparison: {
-          previousPeriod: previousPeriodStats[0] || { totalBookings: 0, totalRevenue: 0 },
+        analytics: analytics[0] || {},
+        summary: {
+          current: currentStats,
+          previous,
           growth: {
-            bookings: previousPeriodStats[0]?.totalBookings 
-              ? ((currentBookings - previousPeriodStats[0].totalBookings) / previousPeriodStats[0].totalBookings) * 100 
-              : 0,
-            revenue: previousPeriodStats[0]?.totalRevenue 
-              ? ((currentRevenue - previousPeriodStats[0].totalRevenue) / previousPeriodStats[0].totalRevenue) * 100 
+            bookings: previous.totalBookings 
+              ? ((currentStats.totalBookings - previous.totalBookings) / previous.totalBookings) * 100 
+              : 100,
+            revenue: previous.totalRevenue 
+              ? ((currentStats.totalRevenue - previous.totalRevenue) / previous.totalRevenue) * 100 
+              : 100,
+            averageValue: previous.averageValue 
+              ? ((currentStats.avgValue - previous.averageValue) / previous.averageValue) * 100 
               : 0
           }
         }
@@ -1421,16 +1678,23 @@ const getNearbyGarages = async (req, res) => {
       isActive: true,
       isDeleted: false
     })
-      .select('name address contactInfo coordinates stats images')
+      .select('name address contactInfo coordinates stats images businessHours')
       .populate({
         path: 'services',
         select: 'name price duration category',
         match: { isDeleted: false, isAvailable: true },
         options: { limit: 3 }
       })
+      .populate({
+        path: 'reviews',
+        select: 'rating',
+        match: { isDeleted: false, isVerified: true },
+        options: { limit: 5 }
+      })
       .limit(parseInt(limit))
       .lean();
 
+    // Calculate distance and check if open now
     garages.forEach(garage => {
       if (garage.coordinates?.coordinates) {
         const [garageLng, garageLat] = garage.coordinates.coordinates;
@@ -1442,6 +1706,28 @@ const getNearbyGarages = async (req, res) => {
           value: Math.round(distance * 10) / 10,
           unit: 'km'
         };
+      }
+
+      // Check if open now
+      const now = new Date();
+      const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+      const today = days[now.getDay()];
+      const todayHours = garage.businessHours?.[today];
+      
+      if (todayHours && !todayHours.closed) {
+        const currentHour = now.getHours();
+        const currentMinute = now.getMinutes();
+        const currentTime = currentHour + currentMinute / 60;
+        
+        const [openHour, openMinute] = todayHours.open.split(':').map(Number);
+        const [closeHour, closeMinute] = todayHours.close.split(':').map(Number);
+        
+        const openTime = openHour + openMinute / 60;
+        const closeTime = closeHour + closeMinute / 60;
+        
+        garage.isOpenNow = currentTime >= openTime && currentTime < closeTime;
+      } else {
+        garage.isOpenNow = false;
       }
     });
 
@@ -1497,7 +1783,9 @@ const deleteGarage = async (req, res) => {
     }
 
     const isOwner = garage.owner.toString() === req.user.id;
-    if (!isOwner && req.user.role !== 'admin') {
+    const isAdmin = req.user.role === 'admin';
+
+    if (!isOwner && !isAdmin) {
       await session.abortTransaction();
       session.endSession();
       return res.status(403).json({
@@ -1506,6 +1794,7 @@ const deleteGarage = async (req, res) => {
       });
     }
 
+    // Soft delete garage
     garage.isDeleted = true;
     garage.deletedAt = new Date();
     garage.deletedBy = req.user.id;
@@ -1513,25 +1802,31 @@ const deleteGarage = async (req, res) => {
     garage.isActive = false;
     await garage.save({ session });
 
+    // Soft delete all services
     await Service.updateMany(
       { garage: id, isDeleted: false },
       {
         isDeleted: true,
-        isAvailable: false
+        isAvailable: false,
+        deletedAt: new Date(),
+        deletedBy: req.user.id
       },
       { session }
     );
 
+    // Cancel future bookings
     await Booking.updateMany(
       { 
         garage: id, 
         bookingDate: { $gte: new Date() },
-        status: { $in: ['pending', 'approved', 'in_progress'] },
+        status: { $in: ['pending', 'approved'] },
         isDeleted: false
       },
       {
         status: 'cancelled',
-        isDeleted: true
+        cancellationReason: 'Garage deleted',
+        cancelledBy: req.user.id,
+        cancelledAt: new Date()
       },
       { session }
     );
@@ -1590,19 +1885,24 @@ const restoreGarage = async (req, res) => {
       });
     }
 
+    // Restore garage
     garage.isDeleted = false;
     garage.deletedAt = undefined;
     garage.deletedBy = undefined;
     garage.status = 'pending';
+    garage.isActive = false;
     await garage.save({ session });
 
     await session.commitTransaction();
     session.endSession();
 
+    const restoredGarage = await Garage.findById(id)
+      .populate('owner', 'name email phone avatar');
+
     res.status(200).json({
       success: true,
       message: 'Garage restored successfully',
-      data: { garage }
+      data: { garage: restoredGarage }
     });
   } catch (error) {
     await session.abortTransaction();
