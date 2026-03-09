@@ -17,7 +17,7 @@ const paymentSchema = new mongoose.Schema(
       required: [true, 'Payment type is required']
     },
     garageCreation: {
-      garage: { type: mongoose.Schema.Types.ObjectId, ref: 'Garage' },
+      garage: { type: mongoose.Schema.Types.ObjectId, ref: 'garage' },
       status: { 
         type: String, 
         enum: ['pending', 'used', 'expired'], 
