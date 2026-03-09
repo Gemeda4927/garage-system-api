@@ -1,10 +1,9 @@
-
-
 const User = require('../models/User');
 const Booking = require('../models/booking');
 const Review = require('../models/Review');
 const Payment = require('../models/Payment');
 const Garage = require('../models/garage');
+const Service = require('../models/Service');
 const mongoose = require('mongoose');
 
 // @desc    Get all users (with filters)
@@ -152,9 +151,7 @@ const getUserById = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      data: {
-        user: userData
-      }
+      data: userData
     });
   } catch (error) {
     res.status(500).json({
@@ -164,46 +161,6 @@ const getUserById = async (req, res) => {
     });
   }
 };
-
-const updateUserRole = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { role } = req.body;
-
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Only admins can update roles'
-      });
-    }
-
-    if (!['admin', 'car_owner', 'garage_owner'].includes(role)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid role'
-      });
-    }
-
-    const user = await User.findByIdAndUpdate(
-      id,
-      { role },
-      { new: true }
-    );
-
-    res.status(200).json({
-      success: true,
-      message: 'User role updated',
-      data: user
-    });
-
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
-  }
-};
-
 
 // @desc    Update user profile
 // @route   PUT /api/users/:id
@@ -278,15 +235,13 @@ const updateUser = async (req, res) => {
       success: true,
       message: 'User updated successfully',
       data: {
-        user: {
-          id: user._id,
-          name: user.name,
-          email: user.email,
-          role: user.role,
-          phone: user.phone,
-          avatar: user.avatar,
-          canCreateGarage: user.canCreateGarage
-        }
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        phone: user.phone,
+        avatar: user.avatar,
+        canCreateGarage: user.canCreateGarage
       }
     });
   } catch (error) {
@@ -298,8 +253,50 @@ const updateUser = async (req, res) => {
   }
 };
 
+// @desc    Update user role (admin only)
+// @route   PUT /api/users/:id/role
+// @access  Private/Admin
+const updateUserRole = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { role } = req.body;
+
+    if (!['admin', 'car_owner', 'garage_owner'].includes(role)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid role'
+      });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      id,
+      { role },
+      { new: true }
+    ).select('-password');
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'User role updated',
+      data: user
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error updating user role',
+      error: error.message
+    });
+  }
+};
+
 // @desc    Soft delete user
-// @route   DELETE /api/users/:id/soft
+// @route   DELETE /api/users/:id
 // @access  Private/Admin or Owner
 const softDeleteUser = async (req, res) => {
   const session = await mongoose.startSession();
@@ -429,7 +426,7 @@ const hardDeleteUser = async (req, res) => {
       });
     }
 
-    // Prevent deleting own account (optional safety)
+    // Prevent deleting own account
     if (req.user.id === id) {
       await session.abortTransaction();
       session.endSession();
@@ -453,8 +450,10 @@ const hardDeleteUser = async (req, res) => {
       const garages = await Garage.find({ owner: id }).session(session);
       const garageIds = garages.map(g => g._id);
 
-      // Delete all services of those garages
-      await Service.deleteMany({ garage: { $in: garageIds } }, { session });
+      // Delete all services of those garages (if Service model exists)
+      if (mongoose.models.Service) {
+        await Service.deleteMany({ garage: { $in: garageIds } }, { session });
+      }
 
       // Delete all bookings for those garages
       await Booking.deleteMany({ garage: { $in: garageIds } }, { session });
@@ -542,8 +541,8 @@ const restoreUser = async (req, res) => {
 
     // Restore user
     user.isDeleted = false;
-    user.deletedAt = undefined;
-    user.deletedBy = undefined;
+    user.deletedAt = null;
+    user.deletedBy = null;
     await user.save({ session });
 
     // If user is a garage owner, restore their garages
@@ -552,20 +551,12 @@ const restoreUser = async (req, res) => {
         { owner: id, isDeleted: true },
         {
           isDeleted: false,
-          deletedAt: undefined,
-          deletedBy: undefined
+          deletedAt: null,
+          deletedBy: null
         },
         { session }
       );
     }
-
-    // Restore user's bookings (optional - based on business logic)
-    // You might want to keep them deleted or restore them
-    // await Booking.updateMany(
-    //   { carOwner: id, isDeleted: true },
-    //   { isDeleted: false },
-    //   { session }
-    // );
 
     await session.commitTransaction();
     session.endSession();
@@ -574,12 +565,10 @@ const restoreUser = async (req, res) => {
       success: true,
       message: 'User restored successfully',
       data: {
-        user: {
-          id: user._id,
-          name: user.name,
-          email: user.email,
-          role: user.role
-        }
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role
       }
     });
   } catch (error) {
@@ -593,7 +582,7 @@ const restoreUser = async (req, res) => {
   }
 };
 
-// @desc    Get deleted users (admin only)
+// @desc    Get deleted users (admin only) - FIXED VERSION
 // @route   GET /api/users/deleted/all
 // @access  Private/Admin
 const getDeletedUsers = async (req, res) => {
@@ -622,14 +611,14 @@ const getDeletedUsers = async (req, res) => {
     const sort = {};
     sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
 
-    // Find deleted users
+    // Find deleted users - FIXED: Removed populate for deletedBy
     const users = await User.find({ isDeleted: true })
       .select('-password -__v')
       .sort(sort)
       .skip(skip)
-      .limit(limitNum)
-      .populate('deletedBy', 'name email');
+      .limit(limitNum);
 
+    // Get total count
     const total = await User.countDocuments({ isDeleted: true });
 
     res.status(200).json({
@@ -685,7 +674,7 @@ const grantGarageCreation = async (req, res) => {
       success: true,
       message: 'Garage creation permission granted',
       data: {
-        userId: user._id,
+        id: user._id,
         canCreateGarage: user.canCreateGarage
       }
     });
@@ -722,7 +711,7 @@ const revokeGarageCreation = async (req, res) => {
       success: true,
       message: 'Garage creation permission revoked',
       data: {
-        userId: user._id,
+        id: user._id,
         canCreateGarage: user.canCreateGarage
       }
     });
@@ -743,7 +732,7 @@ const getUserStats = async (req, res) => {
     const stats = await User.aggregate([
       {
         $facet: {
-          totalUsers: [{ $count: 'count' }],
+          totalUsers: [{ $match: {} }, { $count: 'count' }],
           byRole: [
             {
               $group: {
@@ -785,15 +774,17 @@ const getUserStats = async (req, res) => {
       }
     ]);
 
+    const result = stats[0];
+    
     res.status(200).json({
       success: true,
       data: {
-        totalUsers: stats[0].totalUsers[0]?.count || 0,
-        byRole: stats[0].byRole,
-        activeUsers: stats[0].byStatus.find(s => s._id === false)?.count || 0,
-        deletedUsers: stats[0].byStatus.find(s => s._id === true)?.count || 0,
-        garageCreationEligible: stats[0].garageCreationEligible[0]?.count || 0,
-        recentRegistrations: stats[0].recentRegistrations[0]?.count || 0
+        totalUsers: result.totalUsers[0]?.count || 0,
+        byRole: result.byRole,
+        activeUsers: result.byStatus.find(s => s._id === false)?.count || 0,
+        deletedUsers: result.byStatus.find(s => s._id === true)?.count || 0,
+        garageCreationEligible: result.garageCreationEligible[0]?.count || 0,
+        recentRegistrations: result.recentRegistrations[0]?.count || 0
       }
     });
   } catch (error) {
@@ -809,10 +800,10 @@ module.exports = {
   getAllUsers,
   getUserById,
   updateUser,
+  updateUserRole,
   softDeleteUser,
   hardDeleteUser,
   restoreUser,
-  updateUserRole,
   getDeletedUsers,
   grantGarageCreation,
   revokeGarageCreation,
