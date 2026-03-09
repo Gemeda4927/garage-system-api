@@ -4,47 +4,46 @@ const { protect, authorize } = require('../middleware/auth.middleware');
 
 const router = express.Router();
 
-// Protect all routes - require authentication
-router.use(protect);
+// Protect all routes - require authentication and admin role
+router.use(protect, authorize('admin'));
 
-// All routes below require admin role
-router.use(authorize('admin'));
+// User routes
+router
+  .route('/')
+  .get(userController.getAllUsers);
 
-// ==========================================
-// User Management Routes
-// ==========================================
+router
+  .route('/deleted/all')
+  .get(userController.getDeletedUsers);
 
-// Get all users with filters
-router.get('/', userController.getAllUsers);
+router
+  .route('/stats/summary')
+  .get(userController.getUserStats);
 
-// Get deleted users
-router.get('/deleted/all', userController.getDeletedUsers);
+router
+  .route('/:id')
+  .get(userController.getUserById)
+  .patch(userController.updateUser)
+  .delete(userController.softDeleteUser);
 
-// Get user statistics
-router.get('/stats/summary', userController.getUserStats);
+router
+  .route('/:id/hard')
+  .delete(userController.hardDeleteUser);
 
-// Get single user by ID
-router.get('/:id', userController.getUserById);
+router
+  .route('/:id/restore')
+  .put(userController.restoreUser);
 
-// Update user
-router.patch('/:id', userController.updateUser);
+router
+  .route('/:id/role')
+  .put(userController.updateUserRole);
 
-// Soft delete user
-router.delete('/:id', userController.softDeleteUser);
+router
+  .route('/:id/grant-garage-creation')
+  .put(userController.grantGarageCreation);
 
-// Hard delete user (permanent)
-router.delete('/:id/hard', userController.hardDeleteUser);
-
-// Restore soft deleted user
-router.put('/:id/restore', userController.restoreUser);
-
-// Update user role
-router.put('/:id/role', userController.updateUserRole);
-
-// Grant garage creation permission
-router.put('/:id/grant-garage-creation', userController.grantGarageCreation);
-
-// Revoke garage creation permission
-router.put('/:id/revoke-garage-creation', userController.revokeGarageCreation);
+router
+  .route('/:id/revoke-garage-creation')
+  .put(userController.revokeGarageCreation);
 
 module.exports = router;
