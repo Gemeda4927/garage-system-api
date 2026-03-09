@@ -68,4 +68,7 @@ bookingSchema.virtual('review', {
   justOne: true
 });
 
-module.exports = mongoose.model('Booking', bookingSchema);
+// Safe model export: reuse if already compiled
+const Booking = mongoose.models.Booking || mongoose.model('Booking', bookingSchema);
+
+module.exports = Booking;

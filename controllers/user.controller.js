@@ -1,14 +1,21 @@
 const User = require('../models/User');
-const Booking = require('../models/booking');
+const Booking = require('../models/Booking');
 const Review = require('../models/Review');
 const Payment = require('../models/Payment');
 const Garage = require('../models/garage');
 const Service = require('../models/Service');
 const mongoose = require('mongoose');
 
+// ==========================================
+// Utility Functions
+// ==========================================
+const isValidObjectId = id => mongoose.Types.ObjectId.isValid(id);
+
+// ==========================================
 // @desc    Get all users (with filters)
 // @route   GET /api/users
 // @access  Private/Admin
+// ==========================================
 const getAllUsers = async (req, res) => {
   try {
     const {
@@ -22,28 +29,20 @@ const getAllUsers = async (req, res) => {
       sortOrder = 'desc'
     } = req.query;
 
-    // Build filter object
     const filter = {};
 
-    // Filter by role
-    if (role) {
-      filter.role = role;
-    }
+    if (role) filter.role = role;
 
-    // Filter by deletion status (admin only)
     if (req.user.role === 'admin' && isDeleted !== undefined) {
       filter.isDeleted = isDeleted === 'true';
     } else {
-      // Non-admins can only see non-deleted users
       filter.isDeleted = false;
     }
 
-    // Filter by garage creation permission
     if (canCreateGarage !== undefined) {
       filter.canCreateGarage = canCreateGarage === 'true';
     }
 
-    // Search by name or email
     if (search) {
       filter.$or = [
         { name: { $regex: search, $options: 'i' } },
@@ -52,27 +51,18 @@ const getAllUsers = async (req, res) => {
       ];
     }
 
-    // Pagination
     const pageNum = parseInt(page);
     const limitNum = parseInt(limit);
     const skip = (pageNum - 1) * limitNum;
 
-    // Sorting
-    const sort = {};
-    sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
+    const sort = { [sortBy]: sortOrder === 'desc' ? -1 : 1 };
 
-    // Execute query
     const users = await User.find(filter)
       .select('-password -__v')
       .sort(sort)
       .skip(skip)
-      .limit(limitNum)
-      .populate({
-        path: 'garageCreationPayments.payment',
-        select: 'amount status createdAt'
-      });
+      .limit(limitNum);
 
-    // Get total count
     const total = await User.countDocuments(filter);
 
     res.status(200).json({
@@ -88,6 +78,7 @@ const getAllUsers = async (req, res) => {
       }
     });
   } catch (error) {
+    console.error('Error fetching users:', error);
     res.status(500).json({
       success: false,
       message: 'Error fetching users',
@@ -96,14 +87,22 @@ const getAllUsers = async (req, res) => {
   }
 };
 
+// ==========================================
 // @desc    Get single user by ID
 // @route   GET /api/users/:id
 // @access  Private/Admin or Owner
+// ==========================================
 const getUserById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Check if user has permission (admin or viewing self)
+    if (!isValidObjectId(id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid user ID'
+      });
+    }
+
     if (req.user.role !== 'admin' && req.user.id !== id) {
       return res.status(403).json({
         success: false,
@@ -112,28 +111,15 @@ const getUserById = async (req, res) => {
     }
 
     const user = await User.findById(id)
-      .select('-password -__v')
-      .populate({
-        path: 'garageCreationPayments.payment',
-        select: 'amount status createdAt'
-      });
+      .select('-password -__v');
 
-    if (!user) {
+    if (!user || (user.isDeleted && req.user.role !== 'admin')) {
       return res.status(404).json({
         success: false,
         message: 'User not found'
       });
     }
 
-    // If user is deleted and viewer is not admin
-    if (user.isDeleted && req.user.role !== 'admin') {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
-
-    // Get additional stats for the user
     const [bookingsCount, reviewsCount, paymentsCount, garage] = await Promise.all([
       Booking.countDocuments({ carOwner: id, isDeleted: false }),
       Review.countDocuments({ carOwner: id, isDeleted: false }),
@@ -154,6 +140,7 @@ const getUserById = async (req, res) => {
       data: userData
     });
   } catch (error) {
+    console.error('Error fetching user:', error);
     res.status(500).json({
       success: false,
       message: 'Error fetching user',
@@ -162,15 +149,23 @@ const getUserById = async (req, res) => {
   }
 };
 
+// ==========================================
 // @desc    Update user profile
-// @route   PUT /api/users/:id
+// @route   PATCH /api/users/:id
 // @access  Private/Admin or Owner
+// ==========================================
 const updateUser = async (req, res) => {
   try {
     const { id } = req.params;
-    const updates = req.body;
+    const updates = { ...req.body };
 
-    // Check if user has permission (admin or updating self)
+    if (!isValidObjectId(id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid user ID'
+      });
+    }
+
     if (req.user.role !== 'admin' && req.user.id !== id) {
       return res.status(403).json({
         success: false,
@@ -178,47 +173,33 @@ const updateUser = async (req, res) => {
       });
     }
 
-    // Find user
     const user = await User.findById(id);
-    if (!user) {
+    if (!user || (user.isDeleted && req.user.role !== 'admin')) {
       return res.status(404).json({
         success: false,
         message: 'User not found'
       });
     }
 
-    // If user is deleted, only admin can update
-    if (user.isDeleted && req.user.role !== 'admin') {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
+    // Remove restricted fields
+    delete updates.password;
+    delete updates._id;
+    delete updates.__v;
+    delete updates.createdAt;
+    delete updates.updatedAt;
 
-    // Restrict what non-admins can update
+    // Restrict updates for non-admins
     if (req.user.role !== 'admin') {
-      const allowedUpdates = ['name', 'phone', 'avatar'];
-      Object.keys(updates).forEach(key => {
-        if (!allowedUpdates.includes(key)) {
-          delete updates[key];
-        }
+      const allowed = ['name', 'phone', 'avatar'];
+      Object.keys(updates).forEach(k => {
+        if (!allowed.includes(k)) delete updates[k];
       });
     }
 
-    // If admin is updating role, validate it
-    if (req.user.role === 'admin' && updates.role) {
-      if (!['admin', 'car_owner', 'garage_owner'].includes(updates.role)) {
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid role'
-        });
-      }
-    }
-
-    // If email is being updated, check it's not taken
+    // Check email uniqueness
     if (updates.email && updates.email !== user.email) {
-      const existingUser = await User.findOne({ email: updates.email.toLowerCase() });
-      if (existingUser) {
+      const existing = await User.findOne({ email: updates.email.toLowerCase() });
+      if (existing) {
         return res.status(400).json({
           success: false,
           message: 'Email already in use'
@@ -227,24 +208,19 @@ const updateUser = async (req, res) => {
       updates.email = updates.email.toLowerCase();
     }
 
-    // Update user
     Object.assign(user, updates);
     await user.save();
+
+    const userResponse = user.toObject();
+    delete userResponse.password;
 
     res.status(200).json({
       success: true,
       message: 'User updated successfully',
-      data: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        phone: user.phone,
-        avatar: user.avatar,
-        canCreateGarage: user.canCreateGarage
-      }
+      data: userResponse
     });
   } catch (error) {
+    console.error('Update user error:', error);
     res.status(500).json({
       success: false,
       message: 'Error updating user',
@@ -253,9 +229,11 @@ const updateUser = async (req, res) => {
   }
 };
 
-// @desc    Update user role (admin only)
+// ==========================================
+// @desc    Update user role
 // @route   PUT /api/users/:id/role
 // @access  Private/Admin
+// ==========================================
 const updateUserRole = async (req, res) => {
   try {
     const { id } = req.params;
@@ -265,6 +243,13 @@ const updateUserRole = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: 'Invalid role'
+      });
+    }
+
+    if (!isValidObjectId(id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid user ID'
       });
     }
 
@@ -287,6 +272,7 @@ const updateUserRole = async (req, res) => {
       data: user
     });
   } catch (error) {
+    console.error('Error updating user role:', error);
     res.status(500).json({
       success: false,
       message: 'Error updating user role',
@@ -295,9 +281,11 @@ const updateUserRole = async (req, res) => {
   }
 };
 
+// ==========================================
 // @desc    Soft delete user
 // @route   DELETE /api/users/:id
 // @access  Private/Admin or Owner
+// ==========================================
 const softDeleteUser = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -305,7 +293,15 @@ const softDeleteUser = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Check if user has permission (admin or deleting self)
+    if (!isValidObjectId(id)) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid user ID'
+      });
+    }
+
     if (req.user.role !== 'admin' && req.user.id !== id) {
       await session.abortTransaction();
       session.endSession();
@@ -315,7 +311,6 @@ const softDeleteUser = async (req, res) => {
       });
     }
 
-    // Find user
     const user = await User.findById(id).session(session);
     if (!user) {
       await session.abortTransaction();
@@ -326,7 +321,6 @@ const softDeleteUser = async (req, res) => {
       });
     }
 
-    // Check if already deleted
     if (user.isDeleted) {
       await session.abortTransaction();
       session.endSession();
@@ -342,7 +336,7 @@ const softDeleteUser = async (req, res) => {
     user.deletedBy = req.user.id;
     await user.save({ session });
 
-    // If user is a garage owner, soft delete their garage(s)
+    // Soft delete garages if garage owner
     if (user.role === 'garage_owner') {
       await Garage.updateMany(
         { owner: id, isDeleted: false },
@@ -355,7 +349,7 @@ const softDeleteUser = async (req, res) => {
       );
     }
 
-    // Soft delete user's bookings
+    // Soft delete bookings and reviews
     await Booking.updateMany(
       { carOwner: id, isDeleted: false },
       {
@@ -365,12 +359,9 @@ const softDeleteUser = async (req, res) => {
       { session }
     );
 
-    // Soft delete user's reviews
     await Review.updateMany(
       { carOwner: id, isDeleted: false },
-      {
-        isDeleted: true
-      },
+      { isDeleted: true },
       { session }
     );
 
@@ -380,13 +371,12 @@ const softDeleteUser = async (req, res) => {
     res.status(200).json({
       success: true,
       message: 'User soft deleted successfully',
-      data: {
-        deletedAt: user.deletedAt
-      }
+      data: { deletedAt: user.deletedAt }
     });
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
+    console.error('Error soft deleting user:', error);
     res.status(500).json({
       success: false,
       message: 'Error soft deleting user',
@@ -395,15 +385,26 @@ const softDeleteUser = async (req, res) => {
   }
 };
 
+// ==========================================
 // @desc    Hard delete user (permanent)
 // @route   DELETE /api/users/:id/hard
 // @access  Private/Admin only
+// ==========================================
 const hardDeleteUser = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
     const { id } = req.params;
+
+    if (!isValidObjectId(id)) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid user ID'
+      });
+    }
 
     // Only admins can hard delete
     if (req.user.role !== 'admin') {
@@ -436,7 +437,6 @@ const hardDeleteUser = async (req, res) => {
       });
     }
 
-    // Store user info for response
     const userInfo = {
       id: user._id,
       name: user.name,
@@ -444,37 +444,22 @@ const hardDeleteUser = async (req, res) => {
       role: user.role
     };
 
-    // Hard delete all related data
+    // Delete related data
     if (user.role === 'garage_owner') {
-      // Find all garages owned by user
       const garages = await Garage.find({ owner: id }).session(session);
       const garageIds = garages.map(g => g._id);
 
-      // Delete all services of those garages (if Service model exists)
       if (mongoose.models.Service) {
         await Service.deleteMany({ garage: { $in: garageIds } }, { session });
       }
-
-      // Delete all bookings for those garages
       await Booking.deleteMany({ garage: { $in: garageIds } }, { session });
-
-      // Delete all reviews for those garages
       await Review.deleteMany({ garage: { $in: garageIds } }, { session });
-
-      // Delete the garages
       await Garage.deleteMany({ owner: id }, { session });
     }
 
-    // Delete user's bookings (as car owner)
     await Booking.deleteMany({ carOwner: id }, { session });
-
-    // Delete user's reviews
     await Review.deleteMany({ carOwner: id }, { session });
-
-    // Delete user's payments
     await Payment.deleteMany({ user: id }, { session });
-
-    // Finally, delete the user
     await User.findByIdAndDelete(id, { session });
 
     await session.commitTransaction();
@@ -483,13 +468,12 @@ const hardDeleteUser = async (req, res) => {
     res.status(200).json({
       success: true,
       message: 'User permanently deleted',
-      data: {
-        deletedUser: userInfo
-      }
+      data: { deletedUser: userInfo }
     });
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
+    console.error('Error hard deleting user:', error);
     res.status(500).json({
       success: false,
       message: 'Error hard deleting user',
@@ -498,9 +482,11 @@ const hardDeleteUser = async (req, res) => {
   }
 };
 
+// ==========================================
 // @desc    Restore soft deleted user
 // @route   PUT /api/users/:id/restore
 // @access  Private/Admin only
+// ==========================================
 const restoreUser = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -508,7 +494,16 @@ const restoreUser = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Only admins can restore users
+    if (!isValidObjectId(id)) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid user ID'
+      });
+    }
+
+    // Only admins can restore
     if (req.user.role !== 'admin') {
       await session.abortTransaction();
       session.endSession();
@@ -518,7 +513,6 @@ const restoreUser = async (req, res) => {
       });
     }
 
-    // Find user (including deleted)
     const user = await User.findById(id).session(session);
     if (!user) {
       await session.abortTransaction();
@@ -529,7 +523,6 @@ const restoreUser = async (req, res) => {
       });
     }
 
-    // Check if user is not deleted
     if (!user.isDeleted) {
       await session.abortTransaction();
       session.endSession();
@@ -545,7 +538,7 @@ const restoreUser = async (req, res) => {
     user.deletedBy = null;
     await user.save({ session });
 
-    // If user is a garage owner, restore their garages
+    // Restore garages if garage owner
     if (user.role === 'garage_owner') {
       await Garage.updateMany(
         { owner: id, isDeleted: true },
@@ -574,6 +567,7 @@ const restoreUser = async (req, res) => {
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
+    console.error('Error restoring user:', error);
     res.status(500).json({
       success: false,
       message: 'Error restoring user',
@@ -582,9 +576,11 @@ const restoreUser = async (req, res) => {
   }
 };
 
-// @desc    Get deleted users (admin only) - FIXED VERSION
+// ==========================================
+// @desc    Get deleted users
 // @route   GET /api/users/deleted/all
 // @access  Private/Admin
+// ==========================================
 const getDeletedUsers = async (req, res) => {
   try {
     const {
@@ -594,7 +590,6 @@ const getDeletedUsers = async (req, res) => {
       sortOrder = 'desc'
     } = req.query;
 
-    // Only admins can view deleted users
     if (req.user.role !== 'admin') {
       return res.status(403).json({
         success: false,
@@ -602,23 +597,17 @@ const getDeletedUsers = async (req, res) => {
       });
     }
 
-    // Pagination
     const pageNum = parseInt(page);
     const limitNum = parseInt(limit);
     const skip = (pageNum - 1) * limitNum;
+    const sort = { [sortBy]: sortOrder === 'desc' ? -1 : 1 };
 
-    // Sorting
-    const sort = {};
-    sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
-
-    // Find deleted users - FIXED: Removed populate for deletedBy
     const users = await User.find({ isDeleted: true })
       .select('-password -__v')
       .sort(sort)
       .skip(skip)
       .limit(limitNum);
 
-    // Get total count
     const total = await User.countDocuments({ isDeleted: true });
 
     res.status(200).json({
@@ -634,6 +623,7 @@ const getDeletedUsers = async (req, res) => {
       }
     });
   } catch (error) {
+    console.error('Error fetching deleted users:', error);
     res.status(500).json({
       success: false,
       message: 'Error fetching deleted users',
@@ -642,14 +632,22 @@ const getDeletedUsers = async (req, res) => {
   }
 };
 
-// @desc    Grant garage creation permission (admin only)
+// ==========================================
+// @desc    Grant garage creation permission
 // @route   PUT /api/users/:id/grant-garage-creation
 // @access  Private/Admin
+// ==========================================
 const grantGarageCreation = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Find user
+    if (!isValidObjectId(id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid user ID'
+      });
+    }
+
     const user = await User.findById(id);
     if (!user) {
       return res.status(404).json({
@@ -658,7 +656,6 @@ const grantGarageCreation = async (req, res) => {
       });
     }
 
-    // Check if user is garage owner
     if (user.role !== 'garage_owner') {
       return res.status(400).json({
         success: false,
@@ -666,7 +663,6 @@ const grantGarageCreation = async (req, res) => {
       });
     }
 
-    // Grant permission
     user.canCreateGarage = true;
     await user.save();
 
@@ -679,6 +675,7 @@ const grantGarageCreation = async (req, res) => {
       }
     });
   } catch (error) {
+    console.error('Error granting permission:', error);
     res.status(500).json({
       success: false,
       message: 'Error granting garage creation permission',
@@ -687,14 +684,22 @@ const grantGarageCreation = async (req, res) => {
   }
 };
 
-// @desc    Revoke garage creation permission (admin only)
+// ==========================================
+// @desc    Revoke garage creation permission
 // @route   PUT /api/users/:id/revoke-garage-creation
 // @access  Private/Admin
+// ==========================================
 const revokeGarageCreation = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Find user
+    if (!isValidObjectId(id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid user ID'
+      });
+    }
+
     const user = await User.findById(id);
     if (!user) {
       return res.status(404).json({
@@ -703,7 +708,6 @@ const revokeGarageCreation = async (req, res) => {
       });
     }
 
-    // Revoke permission
     user.canCreateGarage = false;
     await user.save();
 
@@ -716,6 +720,7 @@ const revokeGarageCreation = async (req, res) => {
       }
     });
   } catch (error) {
+    console.error('Error revoking permission:', error);
     res.status(500).json({
       success: false,
       message: 'Error revoking garage creation permission',
@@ -724,9 +729,11 @@ const revokeGarageCreation = async (req, res) => {
   }
 };
 
-// @desc    Get user statistics (admin only)
+// ==========================================
+// @desc    Get user statistics
 // @route   GET /api/users/stats/summary
 // @access  Private/Admin
+// ==========================================
 const getUserStats = async (req, res) => {
   try {
     const stats = await User.aggregate([
@@ -734,20 +741,10 @@ const getUserStats = async (req, res) => {
         $facet: {
           totalUsers: [{ $match: {} }, { $count: 'count' }],
           byRole: [
-            {
-              $group: {
-                _id: '$role',
-                count: { $sum: 1 }
-              }
-            }
+            { $group: { _id: '$role', count: { $sum: 1 } } }
           ],
           byStatus: [
-            {
-              $group: {
-                _id: '$isDeleted',
-                count: { $sum: 1 }
-              }
-            }
+            { $group: { _id: '$isDeleted', count: { $sum: 1 } } }
           ],
           garageCreationEligible: [
             {
@@ -762,9 +759,7 @@ const getUserStats = async (req, res) => {
           recentRegistrations: [
             {
               $match: {
-                createdAt: {
-                  $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) // Last 30 days
-                },
+                createdAt: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
                 isDeleted: false
               }
             },
@@ -775,7 +770,7 @@ const getUserStats = async (req, res) => {
     ]);
 
     const result = stats[0];
-    
+
     res.status(200).json({
       success: true,
       data: {
@@ -788,6 +783,7 @@ const getUserStats = async (req, res) => {
       }
     });
   } catch (error) {
+    console.error('Error fetching user statistics:', error);
     res.status(500).json({
       success: false,
       message: 'Error fetching user statistics',
@@ -796,6 +792,9 @@ const getUserStats = async (req, res) => {
   }
 };
 
+// ==========================================
+// Module Exports
+// ==========================================
 module.exports = {
   getAllUsers,
   getUserById,

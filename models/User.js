@@ -49,41 +49,27 @@ const userSchema = new mongoose.Schema({
   isDeleted: {
     type: Boolean,
     default: false
-  },
-  deletedAt: {
-    type: Date,
-    default: null
-  },
-  deletedBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    default: null
   }
 }, {
   timestamps: true
 });
 
 // ===============================
-// 🔒 Hash password before saving
+// 🔒 Hash password before saving - FIXED
 // ===============================
-userSchema.pre('save', async function(next) {
-  try {
-    // Only hash if password is modified
-    if (!this.isModified('password')) return next();
-    
-    const salt = await bcrypt.genSalt(10);
-    this.password = await bcrypt.hash(this.password, salt);
-    next();
-  } catch (error) {
-    next(error);
-  }
+userSchema.pre('save', async function() {
+  // Only hash if password is modified
+  if (!this.isModified('password')) return;
+
+  const salt = await bcrypt.genSalt(10);
+  this.password = await bcrypt.hash(this.password, salt);
 });
 
 // ===============================
 // 🔑 Compare password method
 // ===============================
-userSchema.methods.comparePassword = async function(candidatePassword) {
-  return await bcrypt.compare(candidatePassword, this.password);
+userSchema.methods.comparePassword = function(candidatePassword) {
+  return bcrypt.compareSync(candidatePassword, this.password);
 };
 
 // ===============================
