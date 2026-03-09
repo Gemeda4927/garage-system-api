@@ -4,7 +4,6 @@ const { protect, authorize } = require('../middleware/auth.middleware');
 
 const router = express.Router();
 
-// Protect all routes - require authentication and admin role
 router.use(protect, authorize('admin'));
 
 // User routes
@@ -33,6 +32,10 @@ router
 router
   .route('/:id/restore')
   .put(userController.restoreUser);
+
+
+
+  
 
 router
   .route('/:id/role')
