@@ -8,19 +8,19 @@ const router = express.Router();
 // PUBLIC ROUTES (No Auth)
 // =========================
 
-// Get all garages (with filters)
+// Get all garages (with filters) - Public sees only verified & active
 router.get('/', garageController.getAllGarages);
 
-// Get nearby garages
+// Get nearby garages - Public sees only verified & active
 router.get('/nearby', garageController.getNearbyGarages);
 
-// Get single garage
+// Get single garage - Public sees only verified & active
 router.get('/:id', garageController.getGarageById);
 
-// Get garage services
+// Get garage services - Public sees only verified & active
 router.get('/:id/services', garageController.getGarageServices);
 
-// Get garage reviews
+// Get garage reviews - Public sees only verified & active
 router.get('/:id/reviews', garageController.getGarageReviews);
 
 // =========================
@@ -56,6 +56,12 @@ router.delete('/:id/files/:filename', authorize('garage_owner', 'admin'), garage
 // =========================
 // ADMIN ONLY ROUTES
 // =========================
+
+// Get deleted garages (admin only)
+router.get('/deleted/all', authorize('admin'), garageController.getDeletedGarages);
+
+// Get unverified garages (admin only)
+router.get('/unverified/all', authorize('admin'), garageController.getUnverifiedGarages);
 
 // Restore deleted garage
 router.put('/:id/restore', authorize('admin'), garageController.restoreGarage);
