@@ -9,6 +9,23 @@ const path = require('path');
 const fs = require('fs').promises;
 
 // ==========================================
+// Helper function to calculate distance
+// ==========================================
+const calculateDistance = (lat1, lon1, lat2, lon2) => {
+  const R = 6371; // Earth's radius in km
+  const dLat = deg2rad(lat2 - lat1);
+  const dLon = deg2rad(lon2 - lon1);
+  const a = 
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * 
+    Math.sin(dLon/2) * Math.sin(dLon/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+};
+
+const deg2rad = (deg) => deg * (Math.PI/180);
+
+// ==========================================
 // @desc    Create a new garage (after payment)
 // @route   POST /api/garages
 // @access  Private (Garage Owner with payment)
@@ -185,7 +202,6 @@ const createGarage = async (req, res) => {
   }
 };
 
-
 // ==========================================
 // @desc    Get all garages (with filters)
 // @route   GET /api/garages
@@ -199,6 +215,7 @@ const getAllGarages = async (req, res) => {
       minRating,
       maxPrice,
       isVerified,
+      isActive,
       status,
       search,
       lat,
@@ -207,23 +224,46 @@ const getAllGarages = async (req, res) => {
       page = 1,
       limit = 10,
       sortBy = 'createdAt',
-      sortOrder = 'desc'
+      sortOrder = 'desc',
+      includeUnverified = false // For admin to see unverified garages
     } = req.query;
 
-    // Build filter
+    // Build filter - exclude deleted garages by default
     const filter = { isDeleted: false };
+
+    // Handle verification status
+    if (isVerified !== undefined) {
+      filter.isVerified = isVerified === 'true';
+    } else if (!includeUnverified && (!req.user || req.user.role !== 'admin')) {
+      // For public users, only show verified garages
+      filter.isVerified = true;
+    }
+
+    // Handle active status
+    if (isActive !== undefined) {
+      filter.isActive = isActive === 'true';
+    }
 
     // Handle user-specific visibility
     if (req.user && req.user.id) {
       const userGarages = await Garage.find({ owner: req.user.id }).distinct('_id');
       
-      filter.$or = [
-        { status: 'active', isActive: true },
-        { _id: { $in: userGarages } }
-      ];
+      // If user is garage owner, they can see their own garages regardless of status
+      if (userGarages.length > 0) {
+        filter.$or = [
+          { status: 'active', isActive: true, isVerified: true },
+          { _id: { $in: userGarages } }
+        ];
+      } else {
+        // Regular users or public
+        filter.status = 'active';
+        filter.isActive = true;
+      }
     } else {
+      // Public users
       filter.status = 'active';
       filter.isActive = true;
+      filter.isVerified = true;
     }
 
     // City filter
@@ -248,11 +288,6 @@ const getAllGarages = async (req, res) => {
     // Rating filter
     if (minRating) {
       filter['stats.averageRating'] = { $gte: parseFloat(minRating) };
-    }
-
-    // Verified filter
-    if (isVerified !== undefined) {
-      filter.isVerified = isVerified === 'true';
     }
 
     // Status filter (admin only)
@@ -423,28 +458,205 @@ const getAllGarages = async (req, res) => {
 };
 
 // ==========================================
-// Helper function to calculate distance
+// @desc    Get deleted garages (Admin only)
+// @route   GET /api/garages/deleted
+// @access  Private/Admin
 // ==========================================
-const calculateDistance = (lat1, lon1, lat2, lon2) => {
-  const R = 6371;
-  const dLat = deg2rad(lat2 - lat1);
-  const dLon = deg2rad(lon2 - lon1);
-  const a = 
-    Math.sin(dLat/2) * Math.sin(dLat/2) +
-    Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * 
-    Math.sin(dLon/2) * Math.sin(dLon/2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-  return R * c;
+const getDeletedGarages = async (req, res) => {
+  try {
+    // Check if user is admin
+    if (!req.user || req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. Admin only.'
+      });
+    }
+
+    const {
+      search,
+      page = 1,
+      limit = 10,
+      sortBy = 'deletedAt',
+      sortOrder = 'desc'
+    } = req.query;
+
+    // Filter for deleted garages only
+    const filter = { isDeleted: true };
+
+    // Search filter
+    if (search) {
+      filter.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } },
+        { 'address.street': { $regex: search, $options: 'i' } },
+        { 'address.city': { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    // Pagination
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+
+    // Sorting
+    const sort = {};
+    sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
+
+    // Execute query
+    const garages = await Garage.find(filter)
+      .populate('owner', 'name email phone avatar')
+      .populate('deletedBy', 'name email')
+      .populate({
+        path: 'services',
+        select: 'name price',
+        match: { isDeleted: true }
+      })
+      .sort(sort)
+      .skip(skip)
+      .limit(limitNum)
+      .lean();
+
+    // Get total count
+    const total = await Garage.countDocuments(filter);
+
+    // Get stats for deleted garages
+    const stats = await Garage.aggregate([
+      { $match: { isDeleted: true } },
+      {
+        $group: {
+          _id: null,
+          totalGarages: { $sum: 1 },
+          totalServices: { $sum: { $size: '$services' } },
+          avgDeletionTime: { $avg: { $subtract: ['$deletedAt', '$createdAt'] } }
+        }
+      }
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        garages,
+        stats: stats[0] || {
+          totalGarages: total,
+          totalServices: 0,
+          avgDeletionTime: 0
+        },
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total,
+          pages: Math.ceil(total / limitNum)
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Get deleted garages error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching deleted garages',
+      error: error.message
+    });
+  }
 };
 
-const deg2rad = (deg) => deg * (Math.PI/180);
-
 // ==========================================
-// @desc    Get single garage by ID
-// @route   GET /api/garages/:id
-// @access  Public
+// @desc    Get unverified garages (Admin only)
+// @route   GET /api/garages/unverified
+// @access  Private/Admin
 // ==========================================
+const getUnverifiedGarages = async (req, res) => {
+  try {
+    // Check if user is admin
+    if (!req.user || req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. Admin only.'
+      });
+    }
 
+    const {
+      search,
+      page = 1,
+      limit = 10,
+      sortBy = 'createdAt',
+      sortOrder = 'desc'
+    } = req.query;
+
+    // Filter for unverified and not deleted garages
+    const filter = { 
+      isVerified: false,
+      isDeleted: false 
+    };
+
+    // Search filter
+    if (search) {
+      filter.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } },
+        { 'address.street': { $regex: search, $options: 'i' } },
+        { 'address.city': { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    // Pagination
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+
+    // Sorting
+    const sort = {};
+    sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
+
+    // Execute query
+    const garages = await Garage.find(filter)
+      .populate('owner', 'name email phone avatar')
+      .populate('creationPayment', 'amount transactionId createdAt')
+      .sort(sort)
+      .skip(skip)
+      .limit(limitNum)
+      .lean();
+
+    // Get total count
+    const total = await Garage.countDocuments(filter);
+
+    // Get stats for unverified garages
+    const stats = await Garage.aggregate([
+      { $match: { isVerified: false, isDeleted: false } },
+      {
+        $group: {
+          _id: '$status',
+          count: { $sum: 1 },
+          avgWaitTime: { 
+            $avg: { 
+              $subtract: [new Date(), '$createdAt'] 
+            } 
+          }
+        }
+      }
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        garages,
+        stats,
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total,
+          pages: Math.ceil(total / limitNum)
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Get unverified garages error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching unverified garages',
+      error: error.message
+    });
+  }
+};
 
 // ==========================================
 // @desc    Get single garage by ID
@@ -527,7 +739,7 @@ const getGarageById = async (req, res) => {
     // Check visibility
     if (!req.user || req.user.role !== 'admin') {
       const isOwner = req.user && garage.owner._id.toString() === req.user.id;
-      if (!isOwner && (garage.status !== 'active' || !garage.isActive)) {
+      if (!isOwner && (garage.status !== 'active' || !garage.isActive || !garage.isVerified)) {
         return res.status(404).json({
           success: false,
           message: 'Garage not found'
@@ -729,6 +941,16 @@ const verifyGarage = async (req, res) => {
       });
     }
 
+    // Check if garage is already verified
+    if (garage.isVerified && status === 'active') {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({
+        success: false,
+        message: 'Garage is already verified'
+      });
+    }
+
     garage.isVerified = status === 'active';
     garage.status = status;
     garage.isActive = status === 'active';
@@ -743,13 +965,14 @@ const verifyGarage = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: `Garage ${status} successfully`,
+      message: `Garage ${status === 'active' ? 'verified' : 'rejected'} successfully`,
       data: {
         garage: {
           id: garage._id,
           name: garage.name,
           status: garage.status,
           isVerified: garage.isVerified,
+          isActive: garage.isActive,
           verifiedAt: garage.verifiedAt
         }
       }
@@ -795,6 +1018,14 @@ const toggleActive = async (req, res) => {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to update this garage'
+      });
+    }
+
+    // Check if garage is verified before allowing activation
+    if (!garage.isVerified && !garage.isActive) {
+      return res.status(400).json({
+        success: false,
+        message: 'Garage must be verified before activation'
       });
     }
 
@@ -978,6 +1209,30 @@ const getGarageServices = async (req, res) => {
         success: false,
         message: 'Invalid garage ID'
       });
+    }
+
+    // Check if garage exists and is accessible
+    const garage = await Garage.findOne({ 
+      _id: id, 
+      isDeleted: false 
+    });
+
+    if (!garage) {
+      return res.status(404).json({
+        success: false,
+        message: 'Garage not found'
+      });
+    }
+
+    // Check visibility
+    if (!req.user || req.user.role !== 'admin') {
+      const isOwner = req.user && garage.owner.toString() === req.user.id;
+      if (!isOwner && (garage.status !== 'active' || !garage.isActive || !garage.isVerified)) {
+        return res.status(404).json({
+          success: false,
+          message: 'Garage not found'
+        });
+      }
     }
 
     const filter = { 
@@ -1252,6 +1507,19 @@ const getGarageReviews = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: 'Invalid garage ID'
+      });
+    }
+
+    // Check if garage exists and is accessible
+    const garage = await Garage.findOne({ 
+      _id: id, 
+      isDeleted: false 
+    });
+
+    if (!garage) {
+      return res.status(404).json({
+        success: false,
+        message: 'Garage not found'
       });
     }
 
@@ -1893,6 +2161,7 @@ const getNearbyGarages = async (req, res) => {
       },
       status: 'active',
       isActive: true,
+      isVerified: true,
       isDeleted: false
     })
       .select('name address contactInfo coordinates stats images businessHours')
@@ -2108,6 +2377,7 @@ const restoreGarage = async (req, res) => {
     garage.deletedBy = undefined;
     garage.status = 'pending';
     garage.isActive = false;
+    garage.isVerified = false; // Reset verification status
     await garage.save({ session });
 
     await session.commitTransaction();
@@ -2139,6 +2409,8 @@ const restoreGarage = async (req, res) => {
 module.exports = {
   createGarage,
   getAllGarages,
+  getDeletedGarages,
+  getUnverifiedGarages,
   getGarageById,
   updateGarage,
   verifyGarage,
