@@ -10,6 +10,7 @@ const router = express.Router();
 
 // Get all garages (with filters) - Public sees only verified & active
 router.get('/', garageController.getAllGarages);
+router.get('/all/complete', garageController.getAllGaragesComplete);
 
 // Get nearby garages - Public sees only verified & active
 router.get('/nearby', garageController.getNearbyGarages);

@@ -1014,7 +1014,9 @@ const toggleActive = async (req, res) => {
     }
 
     const isOwner = garage.owner.toString() === req.user.id;
-    if (!isOwner && req.user.role !== 'admin') {
+    const isAdmin = req.user.role === 'admin';
+
+    if (!isOwner && !isAdmin) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to update this garage'
@@ -1081,7 +1083,9 @@ const uploadFiles = async (req, res) => {
     }
 
     const isOwner = garage.owner.toString() === req.user.id;
-    if (!isOwner && req.user.role !== 'admin') {
+    const isAdmin = req.user.role === 'admin';
+
+    if (!isOwner && !isAdmin) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to upload files'
@@ -1146,7 +1150,9 @@ const deleteFile = async (req, res) => {
     }
 
     const isOwner = garage.owner.toString() === req.user.id;
-    if (!isOwner && req.user.role !== 'admin') {
+    const isAdmin = req.user.role === 'admin';
+
+    if (!isOwner && !isAdmin) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to delete files'
@@ -1341,7 +1347,9 @@ const getGarageServiceBookings = async (req, res) => {
     }
 
     const isOwner = garage.owner.toString() === req.user.id;
-    if (!isOwner && req.user.role !== 'admin') {
+    const isAdmin = req.user.role === 'admin';
+
+    if (!isOwner && !isAdmin) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to view these bookings'
@@ -1689,7 +1697,9 @@ const getGarageBookings = async (req, res) => {
     }
 
     const isOwner = garage.owner.toString() === req.user.id;
-    if (!isOwner && req.user.role !== 'admin') {
+    const isAdmin = req.user.role === 'admin';
+
+    if (!isOwner && !isAdmin) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to view these bookings'
@@ -2337,6 +2347,410 @@ const deleteGarage = async (req, res) => {
 };
 
 // ==========================================
+// @desc    Get ALL garages with COMPLETE data (NO CONDITIONS, NO AUTH)
+// @route   GET /api/garages/all/complete
+// @access  Public (No restrictions)
+// ==========================================
+
+const getAllGaragesComplete = async (req, res) => {
+  try {
+    // NO FILTERS - Get absolutely everything
+    const garages = await Garage.find({}) // Empty filter = all documents
+      .populate({
+        path: 'owner',
+        select: 'name email phone avatar role createdAt updatedAt isActive'
+      })
+      .populate({
+        path: 'services',
+        options: { 
+          sort: { createdAt: -1 } 
+        },
+        populate: {
+          path: 'bookings',
+          select: 'bookingDate timeSlot status carOwner price total isPaid',
+          match: { isDeleted: false },
+          options: { limit: 10 }
+        }
+      })
+      .populate({
+        path: 'reviews',
+        options: { sort: { createdAt: -1 } },
+        populate: [
+          {
+            path: 'carOwner',
+            select: 'name email avatar'
+          },
+          {
+            path: 'booking',
+            select: 'service timeSlot bookingDate',
+            populate: {
+              path: 'service',
+              select: 'name price'
+            }
+          },
+          {
+            path: 'response.respondedBy',
+            select: 'name email role'
+          }
+        ]
+      })
+      .populate({
+        path: 'creationPayment',
+        select: 'amount transactionId status method createdAt updatedAt'
+      })
+      .populate({
+        path: 'verifiedBy',
+        select: 'name email role'
+      })
+      .populate({
+        path: 'deletedBy',
+        select: 'name email role'
+      })
+      .lean();
+
+    // Get ALL related data that might not be populated through references
+    const garageIds = garages.map(g => g._id);
+
+    // Get ALL services for these garages - REMOVED the payment populate
+    const allServices = await Service.find({ 
+      garage: { $in: garageIds } 
+    })
+    .populate({
+      path: 'bookings',
+      select: 'bookingDate timeSlot status carOwner price total isPaid',
+      match: { isDeleted: false },
+      populate: {
+        path: 'carOwner',
+        select: 'name email phone'
+      }
+    })
+    .lean();
+
+    // Get ALL bookings for these garages - REMOVED the payment populate
+    const allBookings = await Booking.find({ 
+      garage: { $in: garageIds } 
+    })
+    .populate('carOwner', 'name email phone avatar')
+    .populate('service', 'name price duration category')
+    .populate({
+      path: 'review',
+      select: 'rating comment createdAt',
+      populate: {
+        path: 'carOwner',
+        select: 'name'
+      }
+    })
+    .lean();
+
+    // Get ALL reviews for these garages
+    const allReviews = await Review.find({ 
+      garage: { $in: garageIds } 
+    })
+    .populate('carOwner', 'name email avatar')
+    .populate({
+      path: 'booking',
+      select: 'service timeSlot bookingDate',
+      populate: {
+        path: 'service',
+        select: 'name price'
+      }
+    })
+    .populate('response.respondedBy', 'name email role')
+    .lean();
+
+    // Get ALL payments related to these garages
+    const allPayments = await Payment.find({
+      $or: [
+        { garage: { $in: garageIds } },
+        { 'garageCreation.garage': { $in: garageIds } }
+      ]
+    })
+    .populate('user', 'name email')
+    .lean();
+
+    // Get ALL users who own these garages
+    const ownerIds = [...new Set(garages.map(g => g.owner?._id?.toString()).filter(Boolean))];
+    const allOwners = await User.find({
+      _id: { $in: ownerIds }
+    })
+    .select('-password')
+    .lean();
+
+    // Calculate total revenue from bookings
+    const totalRevenue = allBookings
+      .filter(b => b.isPaid === true)
+      .reduce((sum, b) => sum + (b.price?.total || b.total || 0), 0);
+
+    // Compile comprehensive statistics
+    const stats = {
+      totalGarages: garages.length,
+      totalVerified: garages.filter(g => g.isVerified).length,
+      totalUnverified: garages.filter(g => !g.isVerified).length,
+      totalActive: garages.filter(g => g.isActive).length,
+      totalInactive: garages.filter(g => !g.isActive).length,
+      totalDeleted: garages.filter(g => g.isDeleted).length,
+      totalPending: garages.filter(g => g.status === 'pending').length,
+      totalApproved: garages.filter(g => g.status === 'approved').length,
+      totalSuspended: garages.filter(g => g.status === 'suspended').length,
+      
+      services: {
+        total: allServices.length,
+        byCategory: allServices.reduce((acc, s) => {
+          acc[s.category] = (acc[s.category] || 0) + 1;
+          return acc;
+        }, {}),
+        priceRange: {
+          min: allServices.length ? Math.min(...allServices.map(s => s.price).filter(Boolean)) : 0,
+          max: allServices.length ? Math.max(...allServices.map(s => s.price).filter(Boolean)) : 0,
+          avg: allServices.length ? allServices.reduce((sum, s) => sum + (s.price || 0), 0) / allServices.length : 0
+        }
+      },
+      
+      bookings: {
+        total: allBookings.length,
+        byStatus: allBookings.reduce((acc, b) => {
+          acc[b.status] = (acc[b.status] || 0) + 1;
+          return acc;
+        }, {}),
+        totalRevenue: totalRevenue,
+        upcoming: allBookings.filter(b => 
+          b.bookingDate && new Date(b.bookingDate) > new Date() && 
+          ['pending', 'approved'].includes(b.status)
+        ).length
+      },
+      
+      reviews: {
+        total: allReviews.length,
+        averageRating: allReviews.length ? allReviews.reduce((sum, r) => sum + (r.rating || 0), 0) / allReviews.length : 0,
+        byRating: allReviews.reduce((acc, r) => {
+          acc[r.rating] = (acc[r.rating] || 0) + 1;
+          return acc;
+        }, {}),
+        withResponse: allReviews.filter(r => r.response?.comment).length
+      },
+      
+      payments: {
+        total: allPayments.length,
+        totalAmount: allPayments.reduce((sum, p) => sum + (p.amount || 0), 0),
+        byStatus: allPayments.reduce((acc, p) => {
+          acc[p.status] = (acc[p.status] || 0) + 1;
+          return acc;
+        }, {}),
+        byMethod: allPayments.reduce((acc, p) => {
+          acc[p.method] = (acc[p.method] || 0) + 1;
+          return acc;
+        }, {})
+      },
+      
+      owners: {
+        total: allOwners.length,
+        withGarages: allOwners.filter(o => 
+          garages.some(g => g.owner?._id?.toString() === o._id.toString())
+        ).length
+      },
+      
+      files: {
+        totalImages: garages.reduce((sum, g) => sum + (g.images?.length || 0), 0),
+        totalDocuments: garages.reduce((sum, g) => sum + (g.documents?.length || 0), 0)
+      }
+    };
+
+    // Calculate price range across all garages
+    const allServicePrices = allServices.map(s => s.price).filter(Boolean);
+    
+    // Group garages by city
+    const byCity = garages.reduce((acc, g) => {
+      const city = g.address?.city || 'Unknown';
+      if (!acc[city]) {
+        acc[city] = {
+          count: 0,
+          garages: []
+        };
+      }
+      acc[city].count++;
+      acc[city].garages.push({
+        id: g._id,
+        name: g.name,
+        status: g.status
+      });
+      return acc;
+    }, {});
+
+    // Group by verification status with details
+    const byVerificationStatus = {
+      verified: garages.filter(g => g.isVerified).map(g => ({
+        id: g._id,
+        name: g.name,
+        verifiedAt: g.verifiedAt,
+        verifiedBy: g.verifiedBy
+      })),
+      unverified: garages.filter(g => !g.isVerified && !g.isDeleted).map(g => ({
+        id: g._id,
+        name: g.name,
+        createdAt: g.createdAt,
+        payment: g.creationPayment
+      }))
+    };
+
+    // Group by deletion status
+    const byDeletionStatus = {
+      active: garages.filter(g => !g.isDeleted).map(g => g._id),
+      deleted: garages.filter(g => g.isDeleted).map(g => ({
+        id: g._id,
+        name: g.name,
+        deletedAt: g.deletedAt,
+        deletedBy: g.deletedBy
+      }))
+    };
+
+    // Group by status
+    const byStatus = garages.reduce((acc, g) => {
+      if (!acc[g.status]) acc[g.status] = [];
+      acc[g.status].push({
+        id: g._id,
+        name: g.name,
+        isVerified: g.isVerified,
+        isActive: g.isActive
+      });
+      return acc;
+    }, {});
+
+    // Timeline data
+    const timeline = {
+      createdByMonth: garages.reduce((acc, g) => {
+        if (g.createdAt) {
+          const month = new Date(g.createdAt).toISOString().slice(0, 7);
+          acc[month] = (acc[month] || 0) + 1;
+        }
+        return acc;
+      }, {}),
+      verifiedByMonth: garages.filter(g => g.verifiedAt).reduce((acc, g) => {
+        if (g.verifiedAt) {
+          const month = new Date(g.verifiedAt).toISOString().slice(0, 7);
+          acc[month] = (acc[month] || 0) + 1;
+        }
+        return acc;
+      }, {})
+    };
+
+    res.status(200).json({
+      success: true,
+      message: 'Complete garage data retrieved successfully',
+      timestamp: new Date().toISOString(),
+      data: {
+        // All garages with full details
+        garages: garages.map(garage => ({
+          ...garage,
+          // Attach all related data (counts only to avoid circular references)
+          servicesCount: allServices.filter(s => s.garage?.toString() === garage._id.toString()).length,
+          bookingsCount: allBookings.filter(b => b.garage?.toString() === garage._id.toString()).length,
+          reviewsCount: allReviews.filter(r => r.garage?.toString() === garage._id.toString()).length,
+          paymentsCount: allPayments.filter(p => 
+            p.garage?.toString() === garage._id.toString() ||
+            p.garageCreation?.garage?.toString() === garage._id.toString()
+          ).length
+        })),
+        
+        // Separate collections for easy access
+        collections: {
+          services: allServices,
+          bookings: allBookings,
+          reviews: allReviews,
+          payments: allPayments,
+          owners: allOwners
+        },
+        
+        // Comprehensive statistics
+        stats,
+        
+        // Groupings
+        groups: {
+          byCity,
+          byVerificationStatus,
+          byDeletionStatus,
+          byStatus
+        },
+        
+        // Price information
+        pricing: {
+          global: {
+            min: allServicePrices.length ? Math.min(...allServicePrices) : 0,
+            max: allServicePrices.length ? Math.max(...allServicePrices) : 0,
+            avg: allServicePrices.length ? 
+              allServicePrices.reduce((a, b) => a + b, 0) / allServicePrices.length : 0,
+            median: allServicePrices.length ? 
+              allServicePrices.sort((a, b) => a - b)[Math.floor(allServicePrices.length / 2)] : 0
+          },
+          byGarage: garages.map(g => ({
+            garageId: g._id,
+            garageName: g.name,
+            services: allServices.filter(s => s.garage?.toString() === g._id.toString()).map(s => ({
+              id: s._id,
+              name: s.name,
+              price: s.price,
+              category: s.category,
+              duration: s.duration,
+              isAvailable: s.isAvailable
+            }))
+          }))
+        },
+        
+        // Timeline data
+        timeline,
+        
+        // Raw counts
+        counts: {
+          garages: garages.length,
+          services: allServices.length,
+          bookings: allBookings.length,
+          reviews: allReviews.length,
+          payments: allPayments.length,
+          owners: allOwners.length
+        },
+        
+        // Metadata
+        metadata: {
+          generatedAt: new Date().toISOString(),
+          totalRecords: {
+            garages: garages.length,
+            services: allServices.length,
+            bookings: allBookings.length,
+            reviews: allReviews.length,
+            payments: allPayments.length,
+            owners: allOwners.length
+          },
+          databaseStats: {
+            garagesWithCoordinates: garages.filter(g => g.coordinates?.coordinates?.length).length,
+            garagesWithImages: garages.filter(g => g.images?.length > 0).length,
+            garagesWithDocuments: garages.filter(g => g.documents?.length > 0).length,
+            garagesWithBusinessHours: garages.filter(g => g.businessHours).length,
+            garagesWithServices: garages.filter(g => 
+              allServices.some(s => s.garage?.toString() === g._id.toString())
+            ).length,
+            garagesWithReviews: garages.filter(g => 
+              allReviews.some(r => r.garage?.toString() === g._id.toString())
+            ).length,
+            garagesWithBookings: garages.filter(g => 
+              allBookings.some(b => b.garage?.toString() === g._id.toString())
+            ).length
+          }
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Get complete garages error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching complete garage data',
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+};
+
+
+// ==========================================
 // @desc    Restore deleted garage
 // @route   PUT /api/garages/:id/restore
 // @access  Private/Admin
@@ -2424,5 +2838,6 @@ module.exports = {
   getGarageAnalytics,
   getNearbyGarages,
   deleteGarage,
+  getAllGaragesComplete,
   restoreGarage
 };
