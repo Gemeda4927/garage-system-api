@@ -1,6 +1,5 @@
 const express = require('express');
 const garageController = require('../controllers/garage.controller');
-const { protect, authorize } = require('../middleware/auth.middleware');
 
 const router = express.Router();
 
@@ -8,69 +7,64 @@ const router = express.Router();
 // PUBLIC ROUTES (No Auth)
 // =========================
 
-// Get all garages (with filters) - Public sees only verified & active
+// Get all garages (with filters)
 router.get('/', garageController.getAllGarages);
 router.get('/all/complete', garageController.getAllGaragesComplete);
 
-// Get nearby garages - Public sees only verified & active
+// Get nearby garages
 router.get('/nearby', garageController.getNearbyGarages);
 
-// Get single garage - Public sees only verified & active
+// Get single garage
 router.get('/:id', garageController.getGarageById);
 
-// Get garage services - Public sees only verified & active
+// Get garage services
 router.get('/:id/services', garageController.getGarageServices);
 
-// Get garage reviews - Public sees only verified & active
+// Get garage reviews
 router.get('/:id/reviews', garageController.getGarageReviews);
 
 // =========================
-// PROTECTED ROUTES (Auth Required)
-// =========================
-router.use(protect);
-
-// =========================
-// GARAGE OWNER & ADMIN ROUTES
+// ROUTES PREVIOUSLY PROTECTED
 // =========================
 
 // Create garage
-router.post('/', authorize('garage_owner', 'admin'), garageController.createGarage);
+router.post('/', garageController.createGarage);
 
 // Update garage
-router.patch('/:id', authorize('garage_owner', 'admin'), garageController.updateGarage);
+router.patch('/:id', garageController.updateGarage);
 
 // Soft delete garage
-router.delete('/:id', authorize('garage_owner', 'admin'), garageController.deleteGarage);
+router.delete('/:id', garageController.deleteGarage);
 
-// Get garage bookings (owner only)
-router.get('/:id/bookings', authorize('garage_owner', 'admin'), garageController.getGarageBookings);
+// Get garage bookings
+router.get('/:id/bookings', garageController.getGarageBookings);
 
-// Get garage analytics (owner only)
-router.get('/:id/analytics', authorize('garage_owner', 'admin'), garageController.getGarageAnalytics);
+// Get garage analytics
+router.get('/:id/analytics', garageController.getGarageAnalytics);
 
 // Upload files (images/documents)
-router.post('/:id/uploads', authorize('garage_owner', 'admin'), garageController.uploadFiles);
+router.post('/:id/uploads', garageController.uploadFiles);
 
 // Delete file
-router.delete('/:id/files/:filename', authorize('garage_owner', 'admin'), garageController.deleteFile);
+router.delete('/:id/files/:filename', garageController.deleteFile);
 
 // =========================
-// ADMIN ONLY ROUTES
+// ROUTES PREVIOUSLY ADMIN ONLY
 // =========================
 
-// Get deleted garages (admin only)
-router.get('/deleted/all', authorize('admin'), garageController.getDeletedGarages);
+// Get deleted garages
+router.get('/deleted/all', garageController.getDeletedGarages);
 
-// Get unverified garages (admin only)
-router.get('/unverified/all', authorize('admin'), garageController.getUnverifiedGarages);
+// Get unverified garages
+router.get('/unverified/all', garageController.getUnverifiedGarages);
 
 // Restore deleted garage
-router.put('/:id/restore', authorize('admin'), garageController.restoreGarage);
+router.put('/:id/restore', garageController.restoreGarage);
 
 // Verify garage
-router.put('/:id/verify', authorize('admin'), garageController.verifyGarage);
+router.put('/:id/verify', garageController.verifyGarage);
 
 // Toggle garage active status
-router.put('/:id/toggle-active', authorize('admin'), garageController.toggleActive);
+router.put('/:id/toggle-active', garageController.toggleActive);
 
 module.exports = router;
