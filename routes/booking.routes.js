@@ -5,13 +5,22 @@ const { protect, authorize } = require('../middleware/auth.middleware');
 const router = express.Router();
 
 // ==========================================
-// PROTECT ALL ROUTES
+// PUBLIC ROUTES (NO AUTHENTICATION REQUIRED)
+// ==========================================
+
+// Check time slot availability - PUBLIC
+router.post('/check-availability', bookingController.checkAvailability);
+
+// ==========================================
+// PROTECT ALL ROUTES BELOW THIS LINE
 // ==========================================
 router.use(protect);
 
-// ==========================================
-// BOOKING MANAGEMENT ROUTES
-// ==========================================
+// Get bookings by date range (protected)
+router.get('/calendar/range', bookingController.getBookingsByDateRange);
+
+// Get booking statistics (admin and garage owners)
+router.get('/stats/analytics', authorize('admin', 'garage_owner'), bookingController.getBookingStats);
 
 // Get all bookings (filtered by role)
 router.get('/', bookingController.getAllBookings);
@@ -19,31 +28,21 @@ router.get('/', bookingController.getAllBookings);
 // Create booking (car owner only)
 router.post('/', authorize('car_owner'), bookingController.createBooking);
 
-// Get single booking (owner, garage owner, or admin)
+// ==========================================
+// PARAMETERIZED ROUTES
+// ==========================================
+
+// Get single booking
 router.get('/:id', bookingController.getBookingById);
 
-// Update booking status (garage owner or admin)
+// Update booking status
 router.put('/:id/status', authorize('garage_owner', 'admin'), bookingController.updateBookingStatus);
 
-// Cancel booking (car owner only)
+// Cancel booking
 router.put('/:id/cancel', authorize('car_owner'), bookingController.cancelBooking);
 
-// Get booking timeline (owner, garage owner, or admin)
+// Get booking timeline
 router.get('/:id/timeline', bookingController.getBookingTimeline);
-
-// ==========================================
-// AVAILABILITY ROUTES
-// ==========================================
-
-// Check time slot availability
-router.post('/check-availability', bookingController.checkAvailability);
-
-// Get bookings by date range
-router.get('/calendar/range', bookingController.getBookingsByDateRange);
-
-// ==========================================
-// ATTACHMENT ROUTES
-// ==========================================
 
 // Upload attachments
 router.post('/:id/attachments', bookingController.uploadAttachments);
@@ -51,21 +50,7 @@ router.post('/:id/attachments', bookingController.uploadAttachments);
 // Delete attachment
 router.delete('/:id/attachments/:filename', bookingController.deleteAttachment);
 
-// ==========================================
-// STATISTICS ROUTES
-// ==========================================
-
-// Get booking statistics (admin and garage owners)
-router.get('/stats/analytics', authorize('admin', 'garage_owner'), bookingController.getBookingStats);
-
-// ==========================================
-// DELETE ROUTES
-// ==========================================
-
-// Soft delete booking (admin, owner, or garage owner)
+// Soft delete booking
 router.delete('/:id', bookingController.deleteBooking);
 
-// ==========================================
-// EXPORT ROUTER
-// ==========================================
 module.exports = router;
